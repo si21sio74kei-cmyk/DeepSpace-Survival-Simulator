@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "api/**/*.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/api/sim/(.*)", "dest": "/api/simulation_system.py" },
+    { "src": "/api/space/(.*)", "dest": "/api/space_data_center.py" },
+    { "src": "/api/dash/(.*)", "dest": "/api/mission_dashboard.py" },
+    { "src": "/(.*)", "dest": "/frontend/DeepSpace%20Survival%20Simulator.html" }
+  ]
+}

@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSpace Survival Simulator - Terminal</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            /* 极其克制的调色板 */
+            --bg-base: #020617; /* 极深的宇宙黑蓝 */
+            --border-dim: rgba(30, 41, 59, 0.8);
+            --text-dim: #94a3b8;
+            --cyan-accent: #06b6d4;
+        }
+        
+        body {
+            background-color: var(--bg-base);
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .font-mono { font-family: 'Share Tech Mono', monospace; }
+
+        /* 极弱的扫描线，克制且不刺眼 */
+        .scanlines {
+            position: fixed; inset: 0;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(6, 182, 212, 0.012) 50%, rgba(6, 182, 212, 0.012));
+            background-size: 100% 4px;
+            pointer-events: none; z-index: 50;
+        }
+
+        /* Anime.js 标志性的几何解锁线 */
+        .geom-line {
+            position: fixed; background-color: rgba(6, 182, 212, 0.2); z-index: 5;
+        }
+
+        /* 科研感模块卡片 */
+        .nav-card {
+            background: rgba(4, 11, 30, 0.7);
+            border: 1px solid var(--border-dim);
+            transition: border-color 0.4s ease;
+            cursor: pointer;
+            will-change: transform;
+        }
+
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+        /* Iframe 嵌套容器 */
+        #iframe-wrapper {
+            position: fixed; inset: 0; z-index: 100;
+            background: var(--bg-base);
+            display: none; opacity: 0;
+        }
+        #app-frame { width: 100%; height: 100%; border: none; }
+        
+        /* 悬浮返回按钮 */
+        .btn-return {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            background: rgba(2, 6, 23, 0.95); border: 1px solid var(--border-dim);
+            border-top: none; border-radius: 0 0 6px 6px;
+            color: var(--text-dim); padding: 8px 32px;
+            font-size: 11px; letter-spacing: 0.25em; cursor: pointer; z-index: 110;
+        }
+        .btn-return:hover { color: #f8fafc; border-color: rgba(6, 182, 212, 0.5); }
+
+        /* 隐藏类，供 Anime.js 调度 */
+        .anim-hide { opacity: 0; }
+        .view-section { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; }
+
+        /* 机械背景层 */
+        #anime-mech-bg {
+            position: fixed; inset: 0; z-index: 0; 
+            opacity: 0.45; pointer-events: none;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .mech-geom { transform-origin: 500px 500px; }
+    </style>
+</head>
+<body>
+
+    <div class="scanlines"></div>
+
+    <div id="anime-mech-bg"></div>
+
+    <div id="line-h" class="geom-line h-[1px] w-0 top-1/2 left-0"></div>
+    <div id="line-v" class="geom-line w-[1px] h-0 left-[30%] top-0"></div>
+
+    <div id="view-boot" class="fixed inset-0 z-50 bg-[#020617] flex flex-col justify-end p-12 font-mono text-[11px] text-slate-500 tracking-widest leading-relaxed">
+        <div id="boot-log" class="space-y-1"></div>
+    </div>
+
+    <div id="view-hero" class="view-section z-10 hidden px-12 md:px-24">
+        <header class="absolute top-10 left-12 right-12 flex justify-between items-start anim-hero">
+            <div class="font-mono text-[10px] text-slate-500 tracking-[0.2em]">
+                <p>NASA / JPL FRAMEWORK <span class="text-slate-300">v5.0</span></p>
+                <p>TELEMETRY: <span class="text-cyan-500">SECURE</span></p>
+            </div>
+            <div class="text-right font-mono text-[10px] text-slate-500 tracking-widest">
+                <p>CLOCK: <span id="clock-hero" class="text-slate-300">00:00:00 UTC</span></p>
+            </div>
+        </header>
+
+        <div class="max-w-4xl anim-hero">
+            <div class="inline-block px-3 py-1 border border-cyan-900/40 text-cyan-500 font-mono text-[10px] tracking-[0.3em] mb-6">
+                DEEP SPACE RESEARCH LAB
+            </div>
+            <h1 class="text-5xl md:text-6xl font-light tracking-[0.1em] text-slate-100 mb-4">
+                DEEPSPACE SURVIVAL <br/><span class="font-medium text-white">SIMULATOR</span>
+            </h1>
+            <p class="text-sm text-slate-400 font-mono tracking-widest mb-16">
+                AI-DRIVEN LONG-TERM SPACE SURVIVAL RESEARCH SYSTEM
+            </p>
+            
+            <button id="btn-init" class="font-mono text-xs tracking-[0.4em] py-4 px-10 border border-slate-700 text-cyan-400 hover:text-white transition-colors">
+                [ INITIALIZE MISSION ]
+            </button>
+        </div>
+
+        <footer class="absolute bottom-10 left-12 font-mono text-[10px] text-slate-600 tracking-widest anim-hero">
+            DEVELOPED BY <span class="text-slate-400">TEAM XXXXX</span>
+        </footer>
+    </div>
+
+    <div id="view-dashboard" class="view-section z-10 hidden px-12 md:px-24">
+        
+        <header class="absolute top-10 left-12 right-12 flex justify-between items-start anim-dash">
+            <div class="font-mono text-[10px] text-slate-500 tracking-[0.2em]">
+                <p>SYSTEM STATUS: <span class="text-green-500 flex items-center inline-flex gap-2"><span class="status-dot bg-green-500 status-breathe"></span>ONLINE</span></p>
+            </div>
+            <div class="font-mono text-[10px] text-slate-500 tracking-[0.2em]">
+                <p>AI CORE: <span class="text-cyan-500 flex items-center justify-end inline-flex gap-2"><span class="status-dot bg-cyan-500 status-breathe"></span>ACTIVE</span></p>
+            </div>
+        </header>
+
+        <div class="w-full max-w-6xl mx-auto">
+            <div class="grid grid-cols-3 gap-8 mb-10 border-b border-slate-800 pb-8 anim-dash">
+                <div>
+                    <p class="font-mono text-[10px] text-slate-500 tracking-widest mb-2">OXYGEN LEVEL</p>
+                    <p class="font-mono text-3xl text-cyan-400"><span id="num-o2">0</span>%</p>
+                </div>
+                <div>
+                    <p class="font-mono text-[10px] text-slate-500 tracking-widest mb-2">ENERGY RESERVES</p>
+                    <p class="font-mono text-3xl text-cyan-400"><span id="num-en">0</span>%</p>
+                </div>
+                <div>
+                    <p class="font-mono text-[10px] text-slate-500 tracking-widest mb-2">EST. SURVIVAL PREDICTION</p>
+                    <p class="font-mono text-3xl text-green-400"><span id="num-surv">0</span> DAYS</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 anim-dash">
+                <div class="nav-card p-6 flex flex-col h-48" onclick="openIframe('Simulation System.html')">
+                    <div class="flex justify-between items-start mb-auto">
+                        <span class="font-mono text-[10px] text-slate-500 tracking-widest border border-slate-700 px-2">PORT:5000</span>
+                    </div>
+                    <div>
+                        <h3 class="font-mono text-xs text-slate-200 tracking-widest mb-2">SIMULATION ENGINE</h3>
+                        <p class="text-[11px] text-slate-500 font-mono leading-relaxed">
+                            基础物理变量解算。多策略资源消耗与环境仿真交叉对比平台。
+                        </p>
+                    </div>
+                </div>
+                <div class="nav-card p-6 flex flex-col h-48" onclick="openIframe('Space Data Center.html')">
+                    <div class="flex justify-between items-start mb-auto">
+                        <span class="font-mono text-[10px] text-slate-500 tracking-widest border border-slate-700 px-2">PORT:5001</span>
+                    </div>
+                    <div>
+                        <h3 class="font-mono text-xs text-slate-200 tracking-widest mb-2">SPACE DATA CENTER</h3>
+                        <p class="text-[11px] text-slate-500 font-mono leading-relaxed">
+                            真实宇宙数据遥测台。对接外网实时天文轨道与气象灾害警报。
+                        </p>
+                    </div>
+                </div>
+                <div class="nav-card p-6 flex flex-col h-48" onclick="openIframe('Mission Dashboard.html')">
+                    <div class="flex justify-between items-start mb-auto">
+                        <span class="font-mono text-[10px] text-cyan-600 tracking-widest border border-cyan-900 px-2 bg-cyan-950/30">PORT:5002</span>
+                    </div>
+                    <div>
+                        <h3 class="font-mono text-xs text-cyan-400 tracking-widest mb-2">MISSION DASHBOARD</h3>
+                        <p class="text-[11px] text-slate-400 font-mono leading-relaxed">
+                            生存预测总控制台。双阶段资源耦合极限预报与 AI 智能管控大屏。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="iframe-wrapper">
+        <button id="btn-close" class="btn-return font-mono anim-hide" onclick="closeIframe()">⬡ CLOSE MODULE</button>
+        <iframe id="app-frame" src=""></iframe>
+    </div>
+
+    <script>
+        // DOM Elements
+        const viewBoot = document.getElementById('view-boot');
+        const bootLog = document.getElementById('boot-log');
+        const viewHero = document.getElementById('view-hero');
+        const viewDash = document.getElementById('view-dashboard');
+        const btnInit = document.getElementById('btn-init');
+        const iframeWrapper = document.getElementById('iframe-wrapper');
+        const appFrame = document.getElementById('app-frame');
+        const btnClose = document.getElementById('btn-close');
+
+        // =========================================================
+        // 核心亮点：100% 还原 animejs.com 的几何网格呼吸阵列
+        // =========================================================
+        function initMechBG() {
+            const container = document.getElementById('anime-mech-bg');
+            const cols = 16;
+            const rows = 16;
+            const size = 1000;
+            const spacingX = size / cols;
+            const spacingY = size / rows;
+            
+            let svg = `<svg viewBox="0 0 ${size} ${size}" class="w-[120vw] h-[120vw] md:w-[100vw] md:h-[100vw] max-w-[1200px] max-h-[1200px]">`;
+            
+            // 1. Anime.js 标志性的十字网格阵列
+            for(let i=0; i<=rows; i++) {
+                for(let j=0; j<=cols; j++) {
+                    const x = j * spacingX;
+                    const y = i * spacingY;
+                    svg += `<path class="mech-grid-pt" d="M${x-4},${y} L${x+4},${y} M${x},${y-4} L${x},${y+4}" stroke="#06b6d4" stroke-width="1.5" opacity="0.2"/>`;
+                }
+            }
+            
+            // 2. 中央复合几何运算器
+            svg += `
+                <g class="mech-geom">
+                    <circle cx="500" cy="500" r="320" fill="none" stroke="#06b6d4" stroke-width="1" class="mech-line" stroke-dasharray="4 12"/>
+                    <polygon points="500,100 846,300 846,700 500,900 154,700 154,300" fill="none" stroke="#06b6d4" stroke-width="2" class="mech-line" opacity="0.5"/>
+                    <polygon points="500,220 742,360 742,640 500,780 258,640 258,360" fill="none" stroke="#06b6d4" stroke-width="1" class="mech-line" opacity="0.3"/>
+                    <rect x="360" y="360" width="280" height="280" fill="none" stroke="#06b6d4" stroke-width="1.5" class="mech-line" transform="rotate(45 500 500)" opacity="0.4"/>
+                    <circle cx="500" cy="500" r="150" fill="none" stroke="#06b6d4" stroke-width="1" class="mech-line" stroke-dasharray="20 10"/>
+                </g>
+            `;
+            svg += `</svg>`;
+            container.innerHTML = svg;
+
+            // 动画 A：网格波纹级联 (Stagger) - animejs.com 最核心的呼吸感
+            anime({
+                targets: '.mech-grid-pt',
+                scale: [
+                    {value: 2.5, easing: 'easeOutSine', duration: 400},
+                    {value: 1, easing: 'easeInOutQuad', duration: 900}
+                ],
+                opacity: [
+                    {value: 1, easing: 'easeOutSine', duration: 400},
+                    {value: 0.1, easing: 'easeInOutQuad', duration: 900}
+                ],
+                delay: anime.stagger(150, {grid: [cols+1, rows+1], from: 'center'}),
+                loop: true,
+                direction: 'alternate'
+            });
+
+            // 动画 B：线条描绘自循环 (Stroke Dashoffset)
+            anime({
+                targets: '.mech-line',
+                strokeDashoffset: [anime.setDashoffset, 0],
+                easing: 'easeInOutSine',
+                duration: 3500,
+                delay: anime.stagger(400),
+                loop: true,
+                direction: 'alternate'
+            });
+
+            // 动画 C：中央核心缓慢转动
+            anime({
+                targets: '.mech-geom',
+                rotate: '1turn',
+                duration: 60000,
+                easing: 'linear',
+                loop: true
+            });
+        }
+
+        // =========================================================
+        // 终端启动序列
+        // =========================================================
+        const logs = [
+            "> UPLINK ESTABLISHED WITH DEEP SPACE NETWORK",
+            "> SYNCHRONIZING TELEMETRY DATA...",
+            "> LOADING AI RESOURCE MODELS... [OK]",
+            "> MOUNTING SECTOR 5000 / 5001 / 5002... [OK]",
+            "> ALL SYSTEMS NOMINAL. BOOTING UI..."
+        ];
+
+        function startBoot() {
+            initMechBG(); // 初始化数学机械背景
+
+            let delay = 0;
+            logs.forEach(line => {
+                setTimeout(() => {
+                    const div = document.createElement('div');
+                    div.innerText = line;
+                    div.style.opacity = 0;
+                    bootLog.appendChild(div);
+                    anime({ targets: div, opacity: 1, translateY: [10, 0], duration: 400, easing: 'linear' });
+                }, delay);
+                delay += Math.random() * 200 + 150;
+            });
+
+            setTimeout(() => {
+                anime({
+                    targets: viewBoot, opacity: 0, duration: 400, easing: 'linear',
+                    complete: () => { viewBoot.style.display = 'none'; drawGeometry(); }
+                });
+            }, delay + 400);
+        }
+
+        function drawGeometry() {
+            const tl = anime.timeline({ easing: 'easeOutExpo' });
+            tl.add({ targets: '#line-h', width: '100vw', duration: 700 })
+              .add({ targets: '#line-v', height: '100vh', duration: 700 }, '-=500')
+              .add({ targets: '.geom-line', opacity: 0, duration: 400, complete: showHero }, '-=100');
+        }
+
+        function showHero() {
+            viewHero.classList.remove('hidden');
+            document.querySelectorAll('.anim-hero').forEach(el => el.style.opacity = 0);
+            
+            anime({
+                targets: '.anim-hero',
+                opacity: [0, 1],
+                translateY: [20, 0],
+                duration: 1200,
+                delay: anime.stagger(150),
+                easing: 'easeOutExpo'
+            });
+        }
+
+        // 按钮物理回弹动效
+        btnInit.addEventListener('mouseenter', () => {
+            anime.remove(btnInit);
+            anime({ targets: btnInit, scale: 1.02, borderColor: '#06b6d4', duration: 400, easing: 'easeOutCubic' });
+        });
+        btnInit.addEventListener('mouseleave', () => {
+            anime.remove(btnInit);
+            anime({ targets: btnInit, scale: 1, borderColor: 'rgba(51, 65, 85, 1)', duration: 600, easing: 'easeOutElastic(1, .8)' });
+        });
+        
+        btnInit.addEventListener('click', () => {
+            anime({
+                targets: btnInit, scale: 0.95, duration: 200, easing: 'easeInQuad',
+                complete: () => {
+                    anime({
+                        targets: viewHero, opacity: 0, filter: 'blur(4px)', duration: 500, easing: 'easeOutSine',
+                        complete: () => { viewHero.style.display = 'none'; showDashboard(); }
+                    });
+                }
+            });
+        });
+
+        function showDashboard() {
+            viewDash.classList.remove('hidden');
+            document.querySelectorAll('.anim-dash').forEach(el => el.style.opacity = 0);
+
+            anime({
+                targets: '.anim-dash',
+                opacity: [0, 1],
+                translateY: [20, 0],
+                duration: 1000,
+                delay: anime.stagger(100),
+                easing: 'easeOutExpo',
+                complete: () => {
+                    anime({ targets: '#num-o2', innerHTML: [0, 84], round: 1, duration: 2000, easing: 'easeOutExpo' });
+                    anime({ targets: '#num-en', innerHTML: [0, 67], round: 1, duration: 2000, easing: 'easeOutExpo', delay: 100 });
+                    anime({ targets: '#num-surv', innerHTML: [0, 194], round: 1, duration: 2500, easing: 'easeOutExpo', delay: 200 });
+                }
+            });
+
+            anime({
+                targets: '.status-breathe',
+                opacity: [0.3, 1],
+                direction: 'alternate',
+                loop: true,
+                duration: 1500,
+                easing: 'easeInOutSine'
+            });
+        }
+
+        document.querySelectorAll('.nav-card').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                anime.remove(card);
+                anime({ targets: card, translateY: -5, scale: 1.01, borderColor: '#06b6d4', duration: 400, easing: 'easeOutCubic' });
+            });
+            card.addEventListener('mouseleave', () => {
+                anime.remove(card);
+                anime({ targets: card, translateY: 0, scale: 1, borderColor: 'rgba(30, 41, 59, 0.8)', duration: 800, easing: 'easeOutElastic(1, .8)' });
+            });
+        });
+
+        function openIframe(url) {
+            appFrame.src = url;
+            iframeWrapper.style.display = 'block';
+
+            anime({ targets: viewDash, scale: 0.97, opacity: 0, filter: 'blur(5px)', duration: 500, easing: 'easeOutExpo' });
+            anime({ targets: iframeWrapper, opacity: [0, 1], translateY: [20, 0], duration: 600, easing: 'easeOutExpo' });
+            anime({ targets: btnClose, opacity: 1, translateY: [-30, 0], duration: 500, delay: 200, easing: 'easeOutExpo' });
+        }
+
+        function closeIframe() {
+            anime({ targets: btnClose, translateY: [0, -30], opacity: 0, duration: 300, easing: 'easeInQuad' });
+            anime({
+                targets: iframeWrapper, opacity: 0, scale: 1.02, duration: 400, easing: 'easeInQuad',
+                complete: () => { iframeWrapper.style.display = 'none'; appFrame.src = ''; }
+            });
+            anime({ targets: viewDash, scale: 1, opacity: 1, filter: 'blur(0px)', duration: 600, easing: 'easeOutExpo' });
+        }
+
+        setInterval(() => {
+            const clock = document.getElementById('clock-hero');
+            if(clock) clock.innerText = new Date().toISOString().substring(11,19) + ' UTC';
+        }, 1000);
+
+        window.addEventListener('DOMContentLoaded', startBoot);
+    </script>
+</body>
+</html>

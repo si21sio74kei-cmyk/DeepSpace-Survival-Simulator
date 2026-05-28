@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>太空與區域環境實時控制艙</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg: #040c1a; --panel: rgba(2,12,30,.95); --border: rgba(0,212,255,.22);
+            --primary: #00d4ff; --good: #00ff88; --warn: #ffaa00; --danger: #ff3355;
+            --label: rgba(0,212,255,.82); --dim: rgba(0,212,255,.45);
+            --font: 'Share Tech Mono','Consolas','Microsoft YaHei',monospace;
+        }
+        body { background-color: var(--bg); color: var(--primary); font-family: var(--font); }
+        body::after {
+            content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9000;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,.007) 2px, rgba(0,212,255,.007) 4px);
+        }
+        .panel {
+            background: var(--panel); border: 1px solid var(--border);
+            box-shadow: 0 0 20px rgba(0, 212, 255, .04), inset 0 0 30px rgba(0, 212, 255, .01);
+        }
+        .ptitle {
+            font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+            color: var(--label); border-bottom: 1px solid var(--border); padding: 8px 12px; flex-shrink: 0;
+            font-weight: bold; background: rgba(0, 212, 255, 0.02);
+        }
+        .hud-select {
+            background: rgba(0,8,22,.88); border: 1px solid var(--border);
+            color: var(--primary); font-family: var(--font); font-size: 11px; padding: 3px 8px; outline: none;
+            transition: border-color .2s, box-shadow .2s; cursor: pointer;
+        }
+        .hud-select:focus { border-color: rgba(0,212,255,.7); box-shadow: 0 0 9px rgba(0,212,255,.22); }
+        .hud-select option { background: #040c1a; }
+        .rbar { height: 6px; background: rgba(0,212,255,.08); border-radius: 3px; overflow: hidden; margin-top: 3px; }
+        .rbar-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); width: 0%; }
+        .c-good { color: var(--good); } .c-warn { color: var(--warn); }
+        .c-danger { color: var(--danger); } .c-dim { color: var(--dim); } .c-lbl { color: var(--label); }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,212,255,.22); border-radius: 2px; }
+        @keyframes em-pulse {
+            0%,100% { box-shadow: 0 0 18px rgba(255,51,85,.2); border-color: rgba(255,51,85,.4); }
+            50% { box-shadow: 0 0 35px rgba(255,51,85,.6); border-color: rgba(255,51,85,.9); }
+        }
+        .emergency-active { animation: em-pulse .8s ease-in-out infinite!important; }
+    </style>
+</head>
+<body class="p-4">
+
+    <header id="app-hdr" class="panel mb-4 h-12 flex items-center justify-between px-4">
+        <div class="flex items-center space-x-3">
+            <span class="text-sm font-bold tracking-[3px] text-white">📊 SPACE-DASHBOARD</span>
+            <span class="text-xs text-gray-500 font-mono">│</span>
+            <span class="text-xs font-mono text-[var(--dim)]">INTELLIGENT TELEMETRY DECK (V5.0)</span>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-2">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                <span class="text-xs text-green-400 font-mono tracking-widest">物理連線已鎖定 (127.0.0.1:5001)</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-h-[calc(100vh-80px)]">
+
+        <div class="panel flex flex-col justify-between rounded-none">
+            <div>
+                <div class="ptitle flex justify-between items-center">
+                    <span>🛰️ 國際空間站 (ISS) 軌道矩陣</span>
+                    <span class="text-[10px] text-cyan-400 font-mono border border-cyan-800 px-1 bg-cyan-950/30">10S_REFRESH</span>
+                </div>
+                <div class="p-4 space-y-4">
+                    <div id="iss-loading" class="text-[var(--dim)] animate-pulse font-mono text-xs">Awaiting telemetry downlink...</div>
+                    <div id="iss-content" class="hidden space-y-3 font-mono">
+                        <div class="text-xs text-[var(--dim)] tracking-wider">CURRENT GEODETIC COORDINATES:</div>
+                        <div class="bg-black/40 p-3 border border-[var(--border)] space-y-1">
+                            <p class="text-xs flex justify-between"><span class="c-lbl">LATITUDE (緯度):</span> <span id="iss-lat" class="text-white font-bold">--</span></p>
+                            <p class="text-xs flex justify-between"><span class="c-lbl">LONGITUDE (經度):</span> <span id="iss-lon" class="text-white font-bold">--</span></p>
+                        </div>
+                        <p class="text-[11px] text-[var(--dim)] flex justify-between"><span>TIMESTAMP:</span> <span id="iss-time" class="c-warn">--</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel flex flex-col justify-between rounded-none">
+            <div>
+                <div class="ptitle flex justify-between items-center">
+                    <span>🚀 SPACEX 航天任務前線日誌</span>
+                    <span class="text-[10px] text-purple-400 font-mono border border-purple-900 px-1 bg-purple-950/30">LATEST_LAUNCH</span>
+                </div>
+                <div class="p-4 space-y-3 font-mono">
+                    <div id="spacex-loading" class="text-[var(--dim)] animate-pulse text-xs">Intercepting logistics logs...</div>
+                    <div id="spacex-content" class="hidden space-y-3">
+                        <div>
+                            <span class="text-[10px] text-[var(--dim)] block">MISSION_CODE:</span>
+                            <h3 id="sx-name" class="text-lg font-bold text-white tracking-wide">--</h3>
+                        </div>
+                        <div class="text-xs flex justify-between border-b border-gray-800 pb-2">
+                            <span class="c-lbl">LAUNCH TIME:</span> <span id="sx-date" class="text-gray-200">--</span>
+                        </div>
+                        <div class="bg-black/30 p-2 text-xs text-gray-400 border border-[var(--border)] h-20 overflow-y-auto leading-relaxed">
+                            <p id="sx-details">--</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-3">
+                <a id="sx-link" href="#" target="_blank" class="w-full inline-block text-center border border-purple-500/40 bg-purple-950/20 hover:bg-purple-900/40 text-purple-400 font-bold py-1.5 px-4 transition text-xs tracking-widest uppercase">🎬 ENTER LIVE BROADCAST</a>
+            </div>
+        </div>
+
+        <div class="panel flex flex-col justify-between rounded-none lg:row-span-2">
+            <div>
+                <div class="ptitle flex justify-between items-center">
+                    <span>🪐 宇宙天體觀測矩陣</span>
+                    <select id="planet-select" class="hud-select text-xs">
+                        <option value="earth">🌍 地球全景 (NASA EPIC)</option>
+                        <option value="mars">☄️ 火星地表 (NASA Rover)</option>
+                        <option value="moon">🌙 月球軌道 (Astronomy API)</option>
+                    </select>
+                </div>
+                <div class="p-4 space-y-4">
+                    <div id="space-loading" class="text-[var(--dim)] animate-pulse font-mono text-xs">Scheduling cosmic array downlink...</div>
+                    <div id="space-content" class="hidden space-y-3 font-mono">
+                        <div class="overflow-hidden border border-[var(--border)] bg-black relative min-h-[220px] flex items-center justify-center">
+                            <div id="img-spinner" class="absolute inset-0 flex items-center justify-center text-[var(--dim)] text-xs">DECRYPTING IMAGING MATRIX...</div>
+                            <img id="space-img" src="" alt="Planet Image" class="w-full h-auto object-cover relative z-10 transition duration-500 opacity-0" 
+                                 onload="this.classList.remove('opacity-0'); document.getElementById('img-spinner').classList.add('hidden');"
+                                 onerror="this.src='https://images.unsplash.com/photo-1614730321146-b6fa6a46bcb4?w=500';">
+                        </div>
+                        <div class="text-[11px] border-b border-gray-800 pb-1 flex justify-between">
+                            <span class="c-lbl">OBSERVATION TIME:</span> <span id="space-date" class="text-gray-300">--</span>
+                        </div>
+                        <p class="text-[11px] text-emerald-400 leading-relaxed font-sans" id="space-cap">--</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel flex flex-col justify-between rounded-none">
+            <div>
+                <div class="ptitle flex justify-between items-center">
+                    <span>📍 區域大氣與環境監測</span>
+                    <select id="city-select" class="hud-select text-xs">
+                        <option value="澳门,澳门">澳門特區</option>
+                        <option value="香港,香港">香港特區</option>
+                        <option value="广东,广州">廣州市</option>
+                        <option value="广东,深圳">深圳市</option>
+                        <option value="北京,北京">北京市</option>
+                        <option value="上海,上海">上海市</option>
+                    </select>
+                </div>
+                <div class="p-4 space-y-4">
+                    <div id="weather-loading" class="text-[var(--dim)] animate-pulse font-mono text-xs">Reading atmosphere array telemetry...</div>
+                    <div id="weather-content" class="hidden space-y-4 font-mono">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-black/40 p-2.5 border border-[var(--border)] text-center">
+                                <span class="text-[10px] text-[var(--dim)] block uppercase">ATMOS / TEMP</span>
+                                <p class="text-xl font-bold c-warn mt-1"><span id="w-status">--</span> / <span id="w-temp">--</span>°C</p>
+                            </div>
+                            <div class="bg-black/40 p-2.5 border border-[var(--border)] text-center">
+                                <span class="text-[10px] text-[var(--dim)] block uppercase">AIR QUALITY (AQI)</span>
+                                <p class="text-xl font-bold c-good mt-1"><span id="w-aqi">--</span> <span id="w-aqiname" class="text-xs">--</span></p>
+                            </div>
+                        </div>
+                        <div class="space-y-2 text-xs pt-1">
+                            <div>
+                                <div class="flex justify-between text-[11px]"><span class="c-lbl">💨 WIND VECTORS:</span> <span id="w-wind" class="text-white">--</span></div>
+                                <div class="rbar"><div id="w-wind-bar" class="rbar-fill bg-cyan-500"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[11px]"><span class="c-lbl">💧 RELATIVE HUMIDITY:</span> <span class="text-white"><span id="w-humid">--</span>%</span></div>
+                                <div class="rbar"><div id="w-humid-bar" class="rbar-fill bg-teal-500"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="storm-panel" class="panel flex flex-col justify-between rounded-none">
+            <div>
+                <div class="ptitle flex justify-between items-center">
+                    <span>💥 深空高能輻射與太陽風暴</span>
+                    <span id="storm-badge" class="text-[10px] text-emerald-400 border border-emerald-900 px-1 bg-emerald-950/30 font-mono">CLEAR</span>
+                </div>
+                <div class="p-4 space-y-3 font-mono">
+                    <div id="storm-loading" class="text-[var(--dim)] animate-pulse text-xs">Scanning coronal mass ejections...</div>
+                    <div id="storm-content" class="hidden space-y-3">
+                        <div class="border-l-2 border-red-500 bg-red-950/10 p-2 text-xs">
+                            <span class="text-[10px] text-[var(--dim)] block">LATEST EVENT DETECTED (UTC):</span>
+                            <p id="st-time" class="font-bold text-white mt-0.5">--</p>
+                        </div>
+                        <div class="text-xs space-y-2">
+                            <div class="flex items-start">
+                                <span class="c-lbl whitespace-nowrap">🛰️ SENSORS IN USE:</span>
+                                <span id="st-ins" class="text-gray-300 ml-1 leading-relaxed">--</span>
+                            </div>
+                            <div class="text-[11px] text-gray-400 bg-black/30 p-2 border border-[var(--border)] h-24 overflow-y-auto leading-relaxed" id="st-note">
+                                --
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // 【防彈核心】：強制前端指名道姓地連接 127.0.0.1 IPv4 位址，徹底封殺 localhost 故障
+const BACKEND_URL = 'http://127.0.0.1:5001/api';
+
+function showError(id, message) {
+    const loadingEl = document.getElementById(`${id}-loading`);
+    if (loadingEl) {
+        // 【修復 1】：這裡加上了 'hidden'，防止報錯文字變成黑洞
+        loadingEl.classList.remove('hidden', 'animate-pulse');
+        loadingEl.innerHTML = `<span class="text-[var(--danger)]">❌ ${message}</span>`;
+    }
+    const contentEl = document.getElementById(`${id}-content`);
+    if (contentEl) contentEl.classList.add('hidden');
+}
+
+function showContent(id) {
+    const loadingEl = document.getElementById(`${id}-loading`);
+    if (loadingEl) loadingEl.classList.add('hidden');
+    const contentEl = document.getElementById(`${id}-content`);
+    if (contentEl) contentEl.classList.remove('hidden');
+}
+
+async function fetchISS() {
+    try {
+        const res = await fetch(`${BACKEND_URL}/iss`);
+        const data = await res.json();
+        document.getElementById('iss-lat').innerText = parseFloat(data.iss_position.latitude).toFixed(4);
+        document.getElementById('iss-lon').innerText = parseFloat(data.iss_position.longitude).toFixed(4);
+        document.getElementById('iss-time').innerText = new Date(data.timestamp * 1000).toLocaleTimeString();
+        showContent('iss');
+    } catch (e) { 
+        // 【修復 2】：增加判斷，如果畫面已經有數據了，遇到網路波動就不報錯，直接駐留舊座標！
+        const contentEl = document.getElementById('iss-content');
+        if (contentEl && contentEl.classList.contains('hidden')) {
+            showError('iss', 'OFFLINE - SYSTEM CONNECTION TIMEOUT'); 
+        }
+    }
+}
+
+        async function fetchSpaceX() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/spacex`);
+                const data = await res.json();
+                document.getElementById('sx-name').innerText = data.name;
+                document.getElementById('sx-date').innerText = data.date;
+                document.getElementById('sx-details').innerText = data.details;
+                document.getElementById('sx-link').href = data.webcast;
+                showContent('spacex');
+            } catch (e) { showError('spacex', 'LOG TRANSFER INTERRUPTED'); }
+        }
+
+        async function fetchSpaceBody() {
+            try {
+                document.getElementById('space-loading').innerHTML = "TUNING DEEP SPACE IMAGING SYSTEM...";
+                document.getElementById('space-loading').classList.add('animate-pulse');
+                document.getElementById('space-loading').classList.remove('hidden');
+                document.getElementById('space-content').classList.add('hidden');
+
+                const targetPlanet = document.getElementById('planet-select').value;
+                const res = await fetch(`${BACKEND_URL}/space-body?type=${targetPlanet}`);
+                const data = await res.json();
+
+                if (data.imageUrl) {
+                    document.getElementById('space-img').src = data.imageUrl;
+                    document.getElementById('space-date').innerText = data.date;
+                    document.getElementById('space-cap').innerText = data.caption;
+                    showContent('space');
+                } else {
+                    showError('space', data.error || 'UNABLE TO SOLVE TEXTURE');
+                }
+            } catch (e) { showError('space', 'CELESTIAL DOWNLOAD LINK EXPIRED'); }
+        }
+
+        async function fetchWeather() {
+            try {
+                document.getElementById('weather-loading').innerHTML = "SYNCING ATMOSPHERE MATRIX...";
+                document.getElementById('weather-loading').classList.add('animate-pulse');
+                document.getElementById('weather-loading').classList.remove('hidden');
+                document.getElementById('weather-content').classList.add('hidden');
+
+                const cityValue = document.getElementById('city-select').value;
+                const [province, city] = cityValue.split(',');
+                
+                const res = await fetch(`${BACKEND_URL}/weather?province=${encodeURIComponent(province)}&city=${encodeURIComponent(city)}`);
+                const data = await res.json();
+                
+                document.getElementById('w-status').innerText = data.weather || '未知';
+                document.getElementById('w-temp').innerText = data.temp || '--';
+                document.getElementById('w-aqi').innerText = data.aqi || '--';
+                document.getElementById('w-aqiname').innerText = `[${data.aqi_name}]`;
+                document.getElementById('w-wind').innerText = data.wind_dir ? `${data.wind_dir} ${data.wind_power}級` : '--';
+                document.getElementById('w-humid').innerText = data.humidity || '--';
+                
+                const windPower = parseInt(data.wind_power) || 0;
+                const windPct = Math.min(100, Math.max(8, (windPower / 12) * 100)); // 風力條動態綁定
+                document.getElementById('w-wind-bar').style.width = `${windPct}%`;
+                
+                const humidVal = parseInt(data.humidity) || 0;
+                const humidPct = Math.min(100, Math.max(8, humidVal)); // 濕度條動態綁定
+                document.getElementById('w-humid-bar').style.width = `${humidPct}%`;
+
+                showContent('weather');
+            } catch (e) { showError('weather', 'METEOROLOGICAL MATRIX OFFLINE'); }
+        }
+
+        async function fetchSolarStorm() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/solar-storm`);
+                const data = await res.json();
+
+                document.getElementById('st-time').innerText = data.startTime || 'N/A';
+                document.getElementById('st-ins').innerText = data.instruments || '無';
+                document.getElementById('st-note').innerText = data.note || '無觀測日誌';
+                
+                const panel = document.getElementById('storm-panel');
+                const badge = document.getElementById('storm-badge');
+                
+                if(data.startTime && data.startTime !== 'N/A') {
+                    badge.innerText = "🚨 CME STORM ACTIVE";
+                    badge.className = "text-[10px] text-white border border-red-500 bg-red-950 px-1 font-mono";
+                    panel.classList.add('emergency-active');
+                } else {
+                    badge.innerText = "✓ SYSTEM CLEAR";
+                    badge.className = "text-[10px] text-green-400 border border-green-900 px-1 bg-green-950/30 font-mono";
+                    panel.classList.remove('emergency-active');
+                }
+                showContent('storm');
+            } catch (e) { showError('storm', 'DEEP SPACE RADAR NETWORK LOST'); }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchISS();
+            fetchSpaceX();
+            fetchSpaceBody();
+            fetchWeather();
+            fetchSolarStorm();
+            
+            document.getElementById('city-select').addEventListener('change', fetchWeather);
+            document.getElementById('planet-select').addEventListener('change', fetchSpaceBody);
+            
+            setInterval(fetchISS, 10000);
+        });
+    </script>
+</body>
+</html>

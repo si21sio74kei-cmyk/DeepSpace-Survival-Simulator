@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="page-title">深空AI生存仿真系统</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ── VARIABLES ── */
+:root{
+  --bg:#040c1a; --panel:rgba(2,12,30,.95); --border:rgba(0,212,255,.22);
+  --primary:#00d4ff; --good:#00ff88; --warn:#ffaa00; --danger:#ff3355;
+  --label:rgba(0,212,255,.82); --dim:rgba(0,212,255,.45);
+  --font:'Share Tech Mono','Consolas','Microsoft YaHei','PingFang SC',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--primary);font-family:var(--font);font-size:13px;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9000;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,.007) 2px,rgba(0,212,255,.007) 4px);}
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-thumb{background:rgba(0,212,255,.22);border-radius:2px;}
+
+/* ── PANEL ── */
+.panel{background:var(--panel);border:1px solid var(--border);
+  box-shadow:0 0 20px rgba(0,212,255,.04),inset 0 0 30px rgba(0,212,255,.01);}
+.ptitle{font-size:11px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--label);border-bottom:1px solid var(--border);padding:6px 11px;flex-shrink:0;}
+
+/* ── INPUTS ── */
+.hud-input,.hud-select{
+  width:100%;background:rgba(0,8,22,.88);border:1px solid var(--border);
+  color:var(--primary);font-family:var(--font);font-size:12px;padding:5px 8px;outline:none;
+  transition:border-color .2s,box-shadow .2s;}
+.hud-input:focus,.hud-select:focus{border-color:rgba(0,212,255,.7);box-shadow:0 0 9px rgba(0,212,255,.22);}
+.hud-select option{background:#040c1a;}
+.hlabel{display:block;font-size:10px;color:var(--label);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:3px;}
+
+/* ── BUTTONS ── */
+.btn{width:100%;background:transparent;border:1px solid var(--border);
+  color:var(--primary);font-family:var(--font);font-size:12px;
+  letter-spacing:1.5px;text-transform:uppercase;padding:7px 4px;cursor:pointer;transition:all .2s;}
+.btn:hover{background:rgba(0,212,255,.09);box-shadow:0 0 12px rgba(0,212,255,.22);}
+.btn-go{border-color:rgba(0,255,136,.5);color:var(--good);}
+.btn-go:hover{background:rgba(0,255,136,.08);}
+.btn-stop{border-color:rgba(255,51,85,.5);color:var(--danger);}
+.btn-stop:hover{background:rgba(255,51,85,.08);}
+.btn-cmp{border-color:rgba(255,204,0,.5);color:var(--warn);}
+.btn-cmp:hover{background:rgba(255,204,0,.08);}
+
+/* ── RESOURCE BAR ── */
+.rbar{height:6px;background:rgba(0,212,255,.08);border-radius:3px;overflow:hidden;margin-top:3px;}
+.rbar-fill{height:100%;border-radius:3px;transition:width .6s ease,background .6s ease;}
+
+/* ── COLOR HELPERS ── */
+.c-good{color:var(--good);} .c-warn{color:var(--warn);}
+.c-danger{color:var(--danger);} .c-dim{color:var(--dim);} .c-lbl{color:var(--label);}
+
+/* ── MODULE ANIMATIONS ── */
+@keyframes mod-breathe{0%,100%{opacity:1;filter:brightness(1);}50%{opacity:.72;filter:brightness(1.42);}}
+@keyframes mod-warn{0%,100%{opacity:1;}50%{opacity:.28;}}
+@keyframes mod-crit{0%,25%,75%,100%{opacity:1;}12.5%,62.5%{opacity:.12;}}
+.mod-ok{animation:mod-breathe 3.8s ease-in-out infinite;}
+.mod-warn{animation:mod-warn 1.1s ease-in-out infinite;}
+.mod-crit{animation:mod-crit .5s ease-in-out infinite;}
+@keyframes em-pulse{
+  0%,100%{box-shadow:0 0 18px rgba(255,51,85,.3);border-color:rgba(255,51,85,.5);}
+  50%{box-shadow:0 0 48px rgba(255,51,85,.88);border-color:rgba(255,51,85,1);}}
+.emergency{animation:em-pulse .8s ease-in-out infinite!important;}
+
+/* ── HEADER ── */
+#app-hdr{height:46px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 12px;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;}
+.tab-btn{background:transparent;border:1px solid var(--border);color:var(--label);
+  font-family:var(--font);font-size:11px;padding:4px 14px;cursor:pointer;transition:all .2s;letter-spacing:1px;}
+.tab-btn.active{background:rgba(0,212,255,.15);color:var(--primary);border-color:rgba(0,212,255,.6);}
+.tab-btn:hover:not(.active){background:rgba(0,212,255,.06);}
+.lang-btn{background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.35);color:var(--primary);
+  font-family:var(--font);font-size:12px;padding:3px 12px;cursor:pointer;
+  transition:all .2s;letter-spacing:1px;font-weight:bold;}
+.lang-btn:hover{background:rgba(0,212,255,.18);}
+
+/* ── LIVE LAYOUT ── */
+#live-view{display:grid;grid-template-rows:1fr 204px;
+  height:calc(100vh - 46px);gap:4px;padding:4px;}
+#live-main{display:grid;grid-template-columns:214px 1fr 204px;gap:4px;min-height:0;}
+#live-charts{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
+#panel-left,#panel-right{overflow-y:auto;display:flex;flex-direction:column;}
+
+/* ── COMPARE LAYOUT ── */
+#cmp-view{height:calc(100vh - 46px);overflow-y:auto;padding:4px;
+  display:flex;flex-direction:column;gap:4px;}
+#cmp-cfg{display:grid;grid-template-columns:1.2fr 1.3fr .8fr;gap:4px;padding:10px 12px;}
+#cmp-charts{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
+#cmp-charts > .panel{height:240px;display:flex;flex-direction:column;padding:8px;}
+.cht-title{font-size:10px;letter-spacing:2px;color:var(--label);
+  border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:5px;flex-shrink:0;}
+.cht-canvas-wrap{flex:1;min-height:0;position:relative;}
+
+/* ── COMPARE TABLE ── */
+.cmp-tbl{width:100%;border-collapse:collapse;}
+.cmp-tbl th{background:rgba(0,212,255,.07);color:var(--label);
+  padding:7px 10px;text-align:left;font-size:10px;letter-spacing:1px;border:1px solid var(--border);}
+.cmp-tbl td{padding:6px 10px;border:1px solid rgba(0,212,255,.1);font-size:12px;}
+.cmp-tbl tr:nth-child(even) td{background:rgba(0,212,255,.025);}
+.cmp-tbl tr:hover td{background:rgba(0,212,255,.06);}
+
+/* ── MODE CHECKBOXES ── */
+.mode-item{display:flex;align-items:center;gap:7px;padding:5px 8px;
+  border:1px solid rgba(0,212,255,.1);cursor:pointer;transition:background .15s;
+  font-size:12px;user-select:none;}
+.mode-item:hover{background:rgba(0,212,255,.06);}
+.mode-item.sel{background:rgba(0,212,255,.1);border-color:rgba(0,212,255,.38);}
+.mode-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+
+.hidden{display:none!important;}
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     HEADER
+========================================================= -->
+<header id="app-hdr">
+  <div style="font-size:14px;letter-spacing:2.5px;color:var(--primary);font-weight:bold;" id="hdr-title">深空AI生存仿真系统</div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span id="hdr-timer" style="font-size:12px;color:var(--warn);">DAY 000 | HR 00</span>
+    <span id="hdr-status" style="font-size:11px;border:1px solid rgba(0,212,255,.25);padding:2px 9px;color:var(--dim);">■ 待机</span>
+    <span id="hdr-ai"     style="font-size:11px;border:1px solid rgba(0,212,255,.2);padding:2px 9px;">AI: NORMAL</span>
+    <span id="hdr-spd"    style="font-size:11px;color:var(--dim);border:1px solid var(--border);padding:2px 7px;">×1</span>
+    <span id="hdr-storm"  class="hidden" style="font-size:11px;border:1px solid rgba(255,170,0,.65);padding:2px 9px;color:var(--warn);">⚡ 太阳风暴</span>
+    <span id="hdr-equip"  style="font-size:10px;color:var(--dim);">EQUIP:1.00</span>
+    <span style="color:var(--border);">│</span>
+    <button class="lang-btn" id="lang-btn" onclick="toggleLang()">EN</button>
+    <span style="color:var(--border);">│</span>
+    <button class="tab-btn active" id="tab-live"    onclick="switchTab('live')">实时仿真</button>
+    <button class="tab-btn"        id="tab-compare" onclick="switchTab('compare')">多组对比</button>
+  </div>
+</header>
+
+<!-- =========================================================
+     LIVE VIEW
+========================================================= -->
+<div id="live-view">
+  <div id="live-main">
+
+    <!-- LEFT: Parameters -->
+    <div id="panel-left" class="panel">
+      <div class="ptitle" id="lp-title">⚙ 任务参数</div>
+      <div style="padding:9px 10px;display:flex;flex-direction:column;gap:7px;flex:1;">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+          <div><label class="hlabel" id="lb-crew">乘员人数</label>
+            <input type="number" id="p_crew"  class="hud-input" value="4"  min="1" max="12"></div>
+          <div><label class="hlabel" id="lb-spd">仿真速度×</label>
+            <input type="number" id="p_speed" class="hud-input" value="1"  min="1" max="20"></div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:7px;">
+          <div style="font-size:10px;color:var(--label);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;" id="lb-initres">初始资源</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+            <div><label class="hlabel" id="lb-o2">氧气%</label>
+              <input type="number" id="p_o2"   class="hud-input" value="100" min="0" max="100"></div>
+            <div><label class="hlabel" id="lb-food">食物%</label>
+              <input type="number" id="p_food" class="hud-input" value="100" min="0" max="100"></div>
+            <div><label class="hlabel" id="lb-water">水%</label>
+              <input type="number" id="p_water"class="hud-input" value="100" min="0" max="100"></div>
+            <div><label class="hlabel" id="lb-nrg">能源%</label>
+              <input type="number" id="p_nrg"  class="hud-input" value="100" min="0" max="100"></div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:7px;">
+          <div style="font-size:10px;color:var(--label);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;" id="lb-env">环境参数</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+            <div><label class="hlabel" id="lb-rad">辐射</label>
+              <input type="number" id="p_rad"  class="hud-input" value="10"  min="0" max="100"></div>
+            <div><label class="hlabel" id="lb-temp">温度°C</label>
+              <input type="number" id="p_temp" class="hud-input" value="22"  min="-50" max="80"></div>
+          </div>
+          <div style="margin-top:5px;"><label class="hlabel" id="lb-solar">太阳风暴%/天</label>
+            <input type="number" id="p_solar" class="hud-input" value="5" min="0" max="100" step="0.5"></div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:7px;">
+          <label class="hlabel" id="lb-aim">AI策略模式</label>
+          <select id="p_aimode" class="hud-select" onchange="updateModeDesc()">
+            <option value="Normal">Normal</option>
+            <option value="Dynamic AI">Dynamic AI</option>
+            <option value="Emergency Survival">Emergency Survival</option>
+            <option value="Energy Conservative">Energy Conservative</option>
+            <option value="Medical Priority">Medical Priority</option>
+            <option value="Maximum Output">Maximum Output</option>
+            <option value="Stealth Mode">Stealth Mode</option>
+            <option value="Balanced Recovery">Balanced Recovery</option>
+          </select>
+          <div id="mode-desc" style="font-size:11px;color:rgba(0,212,255,.5);margin-top:4px;line-height:1.55;"></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:5px;margin-top:auto;padding-top:8px;">
+          <button class="btn btn-go"   id="btn-launch" onclick="startSim()">▶ 启动仿真</button>
+          <button class="btn"          id="btn-pause"  onclick="togglePause()">⏸ 暂停/继续</button>
+          <button class="btn btn-stop" id="btn-abort"  onclick="resetSim()">■ 中止 &amp; 重置</button>
+        </div>
+      </div>
+    </div><!-- /left -->
+
+    <!-- MIDDLE: SVG Base -->
+    <div id="panel-mid" class="panel" style="display:flex;flex-direction:column;min-height:0;">
+      <div class="ptitle" id="lp-base">⬡ 深空基地 — 实时模块状态</div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px;overflow:hidden;min-height:0;">
+        <svg id="base-svg" viewBox="0 0 540 360" preserveAspectRatio="xMidYMid meet"
+             style="width:100%;height:100%;max-height:330px;">
+          <defs>
+            <pattern id="pg" width="26" height="26" patternUnits="userSpaceOnUse">
+              <path d="M26 0L0 0 0 26" fill="none" stroke="rgba(0,212,255,.038)" stroke-width=".5"/>
+            </pattern>
+            <filter id="fg"><feGaussianBlur stdDeviation="3.5" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <rect width="540" height="360" fill="url(#pg)"/>
+          <circle cx="270" cy="182" r="130" fill="none" stroke="rgba(0,212,255,.04)" stroke-width="1" stroke-dasharray="5,9"/>
+          <!-- Connectors -->
+          <line x1="270" y1="154" x2="270" y2="82"  stroke="rgba(0,170,255,.32)"  stroke-width="5" stroke-dasharray="9,5" stroke-linecap="round"/>
+          <line x1="293" y1="167" x2="365" y2="127" stroke="rgba(255,204,0,.32)"  stroke-width="5" stroke-dasharray="9,5" stroke-linecap="round"/>
+          <line x1="293" y1="197" x2="365" y2="237" stroke="rgba(0,255,200,.32)"  stroke-width="5" stroke-dasharray="9,5" stroke-linecap="round"/>
+          <line x1="270" y1="210" x2="270" y2="282" stroke="rgba(255,68,68,.32)"  stroke-width="5" stroke-dasharray="9,5" stroke-linecap="round"/>
+          <line x1="247" y1="197" x2="175" y2="237" stroke="rgba(102,204,255,.32)" stroke-width="5" stroke-dasharray="9,5" stroke-linecap="round"/>
+          <line x1="247" y1="167" x2="175" y2="127" stroke="rgba(255,136,0,.32)"  stroke-width="5" stroke-dasharray="9,5" stroke-linecap="round"/>
+          <!-- Central Hub -->
+          <circle cx="270" cy="182" r="38" fill="rgba(0,22,55,.92)" stroke="rgba(0,212,255,.55)" stroke-width="1.8" filter="url(#fg)"/>
+          <circle cx="270" cy="182" r="30" fill="none" stroke="rgba(0,212,255,.16)" stroke-width=".8"/>
+          <text x="270" y="175" text-anchor="middle" fill="#00d4ff" font-size="8" font-family="Share Tech Mono,Courier New">CENTRAL</text>
+          <text x="270" y="187" text-anchor="middle" fill="#00d4ff" font-size="8" font-family="Share Tech Mono,Courier New">HUB</text>
+          <text x="270" y="201" text-anchor="middle" fill="rgba(0,212,255,.5)" font-size="6.5" font-family="Share Tech Mono,Courier New">STABILITY</text>
+          <text x="270" y="214" text-anchor="middle" font-size="10.5" font-family="Share Tech Mono,Courier New" font-weight="bold" id="sv-stab" fill="#00ff88">100%</text>
+          <!-- O2 -->
+          <g id="mod-o2" class="mod-ok">
+            <polygon points="270,26 298,42 298,74 270,90 242,74 242,42" fill="rgba(0,18,48,.94)" stroke="#00aaff" stroke-width="1.6" filter="url(#fg)"/>
+            <text x="270" y="54" text-anchor="middle" fill="#00aaff" font-size="11" font-family="Share Tech Mono,Courier New" font-weight="bold">O₂</text>
+            <text x="270" y="66" text-anchor="middle" fill="#00aaff" font-size="7" font-family="Share Tech Mono,Courier New">MODULE</text>
+            <text x="270" y="81" text-anchor="middle" font-size="9.5" font-family="Share Tech Mono,Courier New" font-weight="bold" id="sv-o2" fill="#00ff88">100%</text>
+            <circle cx="292" cy="32" r="4.5" id="lt-o2" fill="#00ff88"/>
+          </g>
+          <!-- Energy -->
+          <g id="mod-en" class="mod-ok">
+            <rect x="363" y="85" width="56" height="56" rx="6" fill="rgba(36,22,0,.94)" stroke="#ffcc00" stroke-width="1.6"/>
+            <text x="391" y="108" text-anchor="middle" fill="#ffcc00" font-size="12">⚡</text>
+            <text x="391" y="121" text-anchor="middle" fill="#ffcc00" font-size="7" font-family="Share Tech Mono,Courier New">ENERGY</text>
+            <text x="391" y="134" text-anchor="middle" font-size="9.5" font-family="Share Tech Mono,Courier New" font-weight="bold" id="sv-en" fill="#00ff88">100%</text>
+            <circle cx="411" cy="91" r="4.5" id="lt-en" fill="#00ff88"/>
+          </g>
+          <!-- Water -->
+          <g id="mod-wt" class="mod-ok">
+            <polygon points="391,226 419,242 419,274 391,290 363,274 363,242" fill="rgba(0,22,22,.94)" stroke="#00ffcc" stroke-width="1.6" filter="url(#fg)"/>
+            <text x="391" y="252" text-anchor="middle" fill="#00ffcc" font-size="11">💧</text>
+            <text x="391" y="264" text-anchor="middle" fill="#00ffcc" font-size="7" font-family="Share Tech Mono,Courier New">WATER</text>
+            <text x="391" y="278" text-anchor="middle" font-size="9.5" font-family="Share Tech Mono,Courier New" font-weight="bold" id="sv-wt" fill="#00ff88">100%</text>
+            <circle cx="413" cy="232" r="4.5" id="lt-wt" fill="#00ff88"/>
+          </g>
+          <!-- Medical -->
+          <g id="mod-med" class="mod-ok">
+            <circle cx="270" cy="312" r="30" fill="rgba(38,0,0,.94)" stroke="#ff4444" stroke-width="1.6" filter="url(#fg)"/>
+            <text x="270" y="309" text-anchor="middle" fill="#ff4444" font-size="13" font-weight="bold">+</text>
+            <text x="270" y="321" text-anchor="middle" fill="#ff4444" font-size="7" font-family="Share Tech Mono,Courier New">MEDICAL</text>
+            <text x="270" y="336" text-anchor="middle" font-size="9.5" font-family="Share Tech Mono,Courier New" font-weight="bold" id="sv-med" fill="#00ff88">100%</text>
+            <circle cx="293" cy="286" r="4.5" id="lt-med" fill="#00ff88"/>
+          </g>
+          <!-- Cold-Chain -->
+          <g id="mod-cc" class="mod-ok">
+            <rect x="121" y="225" width="58" height="56" rx="12" fill="rgba(0,12,32,.94)" stroke="#66ccff" stroke-width="1.6"/>
+            <text x="150" y="249" text-anchor="middle" fill="#66ccff" font-size="13">❄</text>
+            <text x="150" y="262" text-anchor="middle" fill="#66ccff" font-size="6.5" font-family="Share Tech Mono,Courier New">COLD-CHAIN</text>
+            <text x="150" y="275" text-anchor="middle" font-size="9.5" font-family="Share Tech Mono,Courier New" font-weight="bold" id="sv-cc" fill="#00ff88">100%</text>
+            <circle cx="172" cy="231" r="4.5" id="lt-cc" fill="#00ff88"/>
+          </g>
+          <!-- Rad Shield -->
+          <g id="mod-rad" class="mod-ok">
+            <polygon points="150,86 178,102 178,134 150,150 122,134 122,102" fill="rgba(38,12,0,.94)" stroke="#ff8800" stroke-width="1.6" filter="url(#fg)"/>
+            <text x="150" y="113" text-anchor="middle" fill="#ff8800" font-size="11">☢</text>
+            <text x="150" y="126" text-anchor="middle" fill="#ff8800" font-size="6.5" font-family="Share Tech Mono,Courier New">RAD SHIELD</text>
+            <text x="150" y="140" text-anchor="middle" font-size="9.5" font-family="Share Tech Mono,Courier New" font-weight="bold" id="sv-rad" fill="#00ff88">10</text>
+            <circle cx="172" cy="92" r="4.5" id="lt-rad" fill="#00ff88"/>
+          </g>
+          <!-- Day/Night indicator -->
+          <circle cx="510" cy="30" r="16" fill="rgba(0,8,22,.85)" stroke="rgba(0,212,255,.2)" stroke-width=".8"/>
+          <text id="dn-icon" x="510" y="35" text-anchor="middle" fill="#ffcc00" font-size="14">☀</text>
+          <text id="dn-text" x="510" y="54" text-anchor="middle" fill="rgba(0,212,255,.38)" font-size="6.5" font-family="Share Tech Mono,Courier New">白天</text>
+          <!-- Footer bar -->
+          <text id="sv-footer" x="270" y="354" text-anchor="middle" fill="rgba(0,212,255,.32)" font-size="6.8" font-family="Share Tech Mono,Courier New">
+            ACTIVITY:1.00 | EQUIP:1.00 | O₂REGEN:0.0000/h | H₂O REC:0.0000/h
+          </text>
+        </svg>
+      </div>
+      <!-- Survival strip -->
+      <div style="border-top:1px solid var(--border);padding:7px 14px;background:rgba(0,8,22,.6);
+                  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <span id="lb-surv" style="font-size:10px;color:var(--label);letter-spacing:2px;">预测生存天数</span>
+        <div style="display:flex;align-items:center;gap:20px;">
+          <div style="text-align:center;">
+            <div id="surv-days" style="font-size:30px;font-weight:bold;color:#00ff88;
+                 text-shadow:0 0 14px #00ff88;line-height:1.1;">---</div>
+            <div id="lb-rem" style="font-size:10px;color:var(--dim);">剩余天数</div>
+          </div>
+          <div id="crit-res" style="font-size:12px;color:var(--warn);">临界: ---</div>
+        </div>
+      </div>
+    </div><!-- /mid -->
+
+    <!-- RIGHT: Monitor + Flags + Log -->
+    <div id="panel-right" class="panel">
+      <div class="ptitle" id="lp-res">◈ 资源监控</div>
+      <div id="res-panel" style="padding:8px 10px;"></div>
+
+      <div class="ptitle" id="lp-sys">◈ 系统状态</div>
+      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span class="c-lbl" id="lb-act">活动系数</span><span id="fl-act"   class="c-good">1.00</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span class="c-lbl" id="lb-equip">设备效率</span><span id="fl-equip" class="c-good">1.00</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span class="c-lbl" id="lb-cir">昼夜节律</span><span id="fl-phase" class="c-dim">--</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span class="c-lbl" id="lb-em">紧急模式</span><span id="fl-em"    class="c-good">关</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span class="c-lbl" id="lb-ss">太阳风暴</span><span id="fl-solar"  class="c-good">正常</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span class="c-lbl" id="lb-so">太阳能输出</span><span id="fl-sol-out" class="c-dim">0.0000/h</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span class="c-lbl" id="lb-o2r">O₂ 再生</span><span id="fl-o2r"    class="c-good">0.0000/h</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span class="c-lbl" id="lb-wtr">水回收</span><span id="fl-wtr"  class="c-good">0.0000/h</span></div>
+      </div>
+
+      <div class="ptitle" id="lp-evt">◈ 事件日志</div>
+      <div id="elog" style="flex:1;overflow-y:auto;padding:7px 10px;font-size:11px;line-height:1.55;">
+        <div class="c-dim" id="elog-init">等待仿真启动...</div>
+      </div>
+    </div><!-- /right -->
+
+  </div><!-- /live-main -->
+
+  <!-- Charts row -->
+  <div id="live-charts">
+    <div class="panel" style="padding:7px;display:flex;flex-direction:column;">
+      <div class="cht-title" id="ct-res">◈ 资源总览</div>
+      <div class="cht-canvas-wrap"><canvas id="ch-res"></canvas></div>
+    </div>
+    <div class="panel" style="padding:7px;display:flex;flex-direction:column;">
+      <div class="cht-title" id="ct-stab">◈ 系统稳定性</div>
+      <div class="cht-canvas-wrap"><canvas id="ch-stab"></canvas></div>
+    </div>
+    <div class="panel" style="padding:7px;display:flex;flex-direction:column;">
+      <div class="cht-title" id="ct-rt">◈ 辐射/温度</div>
+      <div class="cht-canvas-wrap"><canvas id="ch-rt"></canvas></div>
+    </div>
+    <div class="panel" style="padding:7px;display:flex;flex-direction:column;">
+      <div class="cht-title" id="ct-sv">◈ 生存预测（天）</div>
+      <div class="cht-canvas-wrap"><canvas id="ch-surv"></canvas></div>
+    </div>
+  </div>
+</div><!-- /live-view -->
+
+<!-- =========================================================
+     COMPARE VIEW
+========================================================= -->
+<div id="cmp-view" class="hidden">
+
+  <!-- Config Panel -->
+  <div class="panel" id="cmp-cfg">
+
+    <!-- Initial Conditions -->
+    <div>
+      <div class="ptitle" style="margin-bottom:8px;" id="cc-initlbl">初始条件</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+        <div><label class="hlabel" id="cc-crew">乘员</label>
+          <input type="number" id="c_crew"  class="hud-input" value="4"   min="1" max="12"></div>
+        <div><label class="hlabel" id="cc-o2">氧气%</label>
+          <input type="number" id="c_o2"    class="hud-input" value="100" min="0" max="100"></div>
+        <div><label class="hlabel" id="cc-food">食物%</label>
+          <input type="number" id="c_food"  class="hud-input" value="100" min="0" max="100"></div>
+        <div><label class="hlabel" id="cc-water">水%</label>
+          <input type="number" id="c_water" class="hud-input" value="100" min="0" max="100"></div>
+        <div><label class="hlabel" id="cc-nrg">能源%</label>
+          <input type="number" id="c_nrg"   class="hud-input" value="100" min="0" max="100"></div>
+        <div><label class="hlabel" id="cc-rad">辐射</label>
+          <input type="number" id="c_rad"   class="hud-input" value="10"  min="0" max="100"></div>
+        <div><label class="hlabel" id="cc-temp">温度°C</label>
+          <input type="number" id="c_temp"  class="hud-input" value="22"  min="-50" max="80"></div>
+        <div><label class="hlabel" id="cc-solar">风暴%/天</label>
+          <input type="number" id="c_solar" class="hud-input" value="5"   min="0" max="100" step="0.5"></div>
+      </div>
+    </div>
+
+    <!-- Mode Selection -->
+    <div>
+      <div class="ptitle" style="margin-bottom:8px;" id="cc-selmodes">选择对比策略</div>
+      <div id="cmp-mode-list" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;"></div>
+    </div>
+
+    <!-- Controls -->
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div>
+        <label class="hlabel" id="cc-days">仿真天数</label>
+        <input type="number" id="c_days" class="hud-input" value="180" min="30" max="730">
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+        <input type="checkbox" id="c_stoch" style="accent-color:var(--warn);width:14px;height:14px;">
+        <span class="c-lbl" id="cc-stoch">随机事件</span>
+      </label>
+      <button class="btn btn-cmp" id="btn-run" onclick="runComparison()">▶ 执行对比</button>
+      <div id="cmp-prog" class="hidden" style="font-size:12px;color:var(--warn);
+           text-align:center;border:1px solid rgba(255,170,0,.3);padding:6px;" id="cc-calc">计算中...</div>
+    </div>
+  </div>
+
+  <!-- Comparison Charts -->
+  <div id="cmp-charts">
+    <div class="panel">
+      <div class="cht-title" id="cc-csv">◈ 生存预测对比（天）</div>
+      <div class="cht-canvas-wrap"><canvas id="cc-ch-surv"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="cht-title" id="cc-co2">◈ 氧气对比（%）</div>
+      <div class="cht-canvas-wrap"><canvas id="cc-ch-o2"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="cht-title" id="cc-cen">◈ 能源对比（%）</div>
+      <div class="cht-canvas-wrap"><canvas id="cc-ch-en"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="cht-title" id="cc-chlt">◈ 健康对比（%）</div>
+      <div class="cht-canvas-wrap"><canvas id="cc-ch-health"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Quantitative Results Table -->
+  <div class="panel" style="padding:10px 12px;margin-bottom:4px;">
+    <div class="ptitle" style="margin-bottom:10px;" id="cc-qtitle">◈ 量化对比结果</div>
+    <div id="cmp-tbl-wrap" style="overflow-x:auto;">
+      <div style="font-size:12px;color:var(--dim);text-align:center;padding:20px;" id="cc-nodata">
+        请选择策略并执行对比
+      </div>
+    </div>
+  </div>
+
+</div><!-- /cmp-view -->
+
+<!-- =========================================================
+     JAVASCRIPT
+========================================================= -->
+<script>
+// ============================================================
+// i18n
+// ============================================================
+const I18N = {
+  zh:{
+    title:'深空AI生存仿真系统', tabLive:'实时仿真', tabCompare:'多组对比',
+    lp_title:'⚙ 任务参数', lb_crew:'乘员人数', lb_spd:'仿真速度×',
+    lb_initres:'初始资源', lb_o2:'氧气%', lb_food:'食物%', lb_water:'水%', lb_nrg:'能源%',
+    lb_env:'环境参数', lb_rad:'辐射', lb_temp:'温度°C', lb_solar:'太阳风暴%/天',
+    lb_aim:'AI策略模式', btn_launch:'▶ 启动仿真', btn_pause:'⏸ 暂停/继续', btn_abort:'■ 中止 & 重置',
+    lp_base:'⬡ 深空基地 — 实时模块状态',
+    lb_surv:'预测生存天数', lb_rem:'剩余天数', crit:'临界',
+    lp_res:'◈ 资源监控', lp_sys:'◈ 系统状态',
+    lb_act:'活动系数', lb_equip:'设备效率', lb_cir:'昼夜节律',
+    lb_em:'紧急模式', lb_ss:'太阳风暴', lb_so:'太阳能输出',
+    lb_o2r:'O₂ 再生', lb_wtr:'水回收', lp_evt:'◈ 事件日志',
+    elog_init:'等待仿真启动...',
+    ct_res:'◈ 资源总览', ct_stab:'◈ 系统稳定性', ct_rt:'◈ 辐射/温度', ct_sv:'◈ 生存预测（天）',
+    hdr_storm:'⚡ 太阳风暴', st_standby:'待机', st_running:'运行中', st_paused:'已暂停', st_stopped:'已停止',
+    dn_day:'白天', dn_night:'夜晚', fl_off:'关', fl_clear:'正常',
+    // Compare
+    cc_initlbl:'初始条件', cc_selmodes:'选择对比策略', cc_days:'仿真天数',
+    cc_stoch:'随机事件', btn_run:'▶ 执行对比', cc_calc:'计算中...',
+    cc_nodata:'请选择策略并执行对比',
+    cc_csv:'◈ 生存预测对比（天）', cc_co2:'◈ 氧气对比（%）',
+    cc_cen:'◈ 能源对比（%）', cc_chlt:'◈ 健康对比（%）',
+    cc_qtitle:'◈ 量化对比结果',
+    cc_crew:'乘员', cc_o2:'氧气%', cc_food:'食物%', cc_water:'水%',
+    cc_nrg:'能源%', cc_rad:'辐射', cc_temp:'温度°C', cc_solar:'风暴%/天',
+    // Table
+    tr_rank:'排名', tr_strat:'策略', tr_surv:'预测天数',
+    tr_o2:'末期O₂%', tr_food:'末期食物%', tr_water:'末期水%',
+    tr_nrg:'末期能源%', tr_health:'末期健康%', tr_status:'状态',
+    tr_survived:'✓ 存活', tr_failed:'✗ 失败',
+    // Resource labels for charts
+    rl_o2:'氧气', rl_food:'食物', rl_water:'水', rl_nrg:'能源',
+    rl_health:'健康', rl_rad:'辐射', rl_stab:'稳定性',
+    // Mode descriptions
+    md_Normal:'标准运行 — 所有系统正常',
+    md_DynamicAI:'自适应优化 — 实时资源平衡调度',
+    md_EmergencySurvival:'紧急生存协议 — 氧气与水资源优先',
+    md_EnergyConservative:'节能保守模式 — 太阳能输出最大化',
+    md_MedicalPriority:'健康优先协议 — 辐射防护最强',
+    md_MaximumOutput:'全功率运行 — 高风险高回报',
+    md_StealthMode:'超低功耗待机 — 延长任务存活极限',
+    md_BalancedRecovery:'渐进式系统恢复 — 稳态优化',
+    backendErr:'❌ 无法连接到 Vercel 部署后的模拟 API，请检查 /api/sim 路由或本地后端配置。',
+  },
+  en:{
+    title:'Deep Space AI Survival System', tabLive:'Live Sim', tabCompare:'Multi-Group',
+    lp_title:'⚙ Mission Parameters', lb_crew:'Crew Count', lb_spd:'Sim Speed ×',
+    lb_initres:'Initial Resources', lb_o2:'Oxygen%', lb_food:'Food%', lb_water:'Water%', lb_nrg:'Energy%',
+    lb_env:'Environment', lb_rad:'Radiation', lb_temp:'Temp °C', lb_solar:'Solar Storm %/day',
+    lb_aim:'AI Strategy', btn_launch:'▶ LAUNCH SIM', btn_pause:'⏸ PAUSE / RESUME', btn_abort:'■ ABORT & RESET',
+    lp_base:'⬡ Deep Space Base — Live Module Status',
+    lb_surv:'Survival Prediction', lb_rem:'Days Remaining', crit:'CRITICAL',
+    lp_res:'◈ Resource Monitor', lp_sys:'◈ System Flags',
+    lb_act:'Activity Factor', lb_equip:'Equip. Efficiency', lb_cir:'Circadian Phase',
+    lb_em:'Emergency Mode', lb_ss:'Solar Storm', lb_so:'Solar Output',
+    lb_o2r:'O₂ Regen', lb_wtr:'H₂O Recycled', lp_evt:'◈ Event Log',
+    elog_init:'Awaiting simulation launch...',
+    ct_res:'◈ Resource Overview', ct_stab:'◈ System Stability', ct_rt:'◈ Radiation/Temp', ct_sv:'◈ Survival Prediction (d)',
+    hdr_storm:'⚡ SOLAR STORM', st_standby:'STANDBY', st_running:'RUNNING', st_paused:'PAUSED', st_stopped:'STOPPED',
+    dn_day:'DAYTIME', dn_night:'NIGHTTIME', fl_off:'OFF', fl_clear:'CLEAR',
+    cc_initlbl:'Initial Conditions', cc_selmodes:'Select Strategies', cc_days:'Sim Days',
+    cc_stoch:'Random Events', btn_run:'▶ RUN COMPARISON', cc_calc:'Computing...',
+    cc_nodata:'Select strategies and run comparison',
+    cc_csv:'◈ Survival Prediction (days)', cc_co2:'◈ Oxygen (%)',
+    cc_cen:'◈ Energy (%)', cc_chlt:'◈ Health (%)',
+    cc_qtitle:'◈ Quantitative Comparison',
+    cc_crew:'Crew', cc_o2:'Oxygen%', cc_food:'Food%', cc_water:'Water%',
+    cc_nrg:'Energy%', cc_rad:'Radiation', cc_temp:'Temp°C', cc_solar:'Storm%/day',
+    tr_rank:'Rank', tr_strat:'Strategy', tr_surv:'Survival(days)',
+    tr_o2:'Final O₂%', tr_food:'Final Food%', tr_water:'Final Water%',
+    tr_nrg:'Final Nrg%', tr_health:'Final Health%', tr_status:'Status',
+    tr_survived:'✓ Survived', tr_failed:'✗ Failed',
+    rl_o2:'O₂', rl_food:'Food', rl_water:'Water', rl_nrg:'Energy',
+    rl_health:'Health', rl_rad:'Radiation', rl_stab:'Stability',
+    md_Normal:'Standard Operation — all systems nominal',
+    md_DynamicAI:'Adaptive Optimization — real-time resource balancing',
+    md_EmergencySurvival:'Critical Protocol — O₂ & water priority',
+    md_EnergyConservative:'Power Saving Mode — solar output maximized',
+    md_MedicalPriority:'Health First — radiation shielding maximized',
+    md_MaximumOutput:'Full Capacity — high risk / high reward',
+    md_StealthMode:'Ultra Low Power — extended mission survivability',
+    md_BalancedRecovery:'Gradual Recovery — steady-state stabilization',
+    backendErr:'❌ Cannot reach the deployed simulation API. Please verify the /api/sim route or local backend setup.',
+  }
+};
+
+let LANG = 'zh';
+function T(k){ return I18N[LANG][k] || I18N.zh[k] || k; }
+
+// IDs that map directly to i18n keys
+const I18N_IDS = [
+  'page-title','hdr-title','lp-title','lb-crew','lb-spd','lb-initres',
+  'lb-o2','lb-food','lb-water','lb-nrg','lb-env','lb-rad','lb-temp','lb-solar',
+  'lb-aim','btn-launch','btn-pause','btn-abort','lp-base','lb-surv','lb-rem',
+  'lp-res','lp-sys','lb-act','lb-equip','lb-cir','lb-em','lb-ss','lb-so',
+  'lb-o2r','lb-wtr','lp-evt','elog-init','ct-res','ct-stab','ct-rt','ct-sv',
+  'cc-initlbl','cc-selmodes','cc-days','cc-stoch','btn-run','cc-nodata',
+  'cc-csv','cc-co2','cc-cen','cc-chlt','cc-qtitle',
+  'cc-crew','cc-o2','cc-food','cc-water','cc-nrg','cc-rad','cc-temp','cc-solar',
+];
+function applyLang(){
+  I18N_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const key = id.replace(/-/g,'_');
+    const txt = T(key);
+    if (txt && txt !== key) el.textContent = txt;
+  });
+  document.getElementById('tab-live').textContent    = T('tabLive');
+  document.getElementById('tab-compare').textContent = T('tabCompare');
+  document.getElementById('lang-btn').textContent    = LANG === 'zh' ? 'EN' : '中';
+  document.getElementById('hdr-storm').textContent   = T('hdr_storm');
+  // Update dynamic elements that may be in standby
+  const se = document.getElementById('hdr-status');
+  if (se && (se.textContent.includes('待机') || se.textContent.includes('STANDBY')))
+    se.textContent = `■ ${T('st_standby')}`;
+  document.getElementById('elog-init').textContent = T('elog_init');
+  updateModeDesc();
+  buildModeCBs();
+  refreshLiveChartLabels();
+}
+function toggleLang(){ LANG = LANG === 'zh' ? 'en' : 'zh'; applyLang(); }
+
+// ============================================================
+// AI Mode data
+// ============================================================
+const MODE_COLORS = {
+  'Normal':'#00d4ff','Dynamic AI':'#00ff88','Emergency Survival':'#ff3355',
+  'Energy Conservative':'#ffcc00','Medical Priority':'#ff6699',
+  'Maximum Output':'#ff8800','Stealth Mode':'#aa88ff','Balanced Recovery':'#00ffcc',
+};
+const ALL_MODES = Object.keys(MODE_COLORS);
+
+const PARAMS_JS = {
+  'Normal':              {activity:1.00,energy_save:0.00,ration:1.00,regen_boost:1.00,shield:false},
+  'Dynamic AI':          {activity:0.85,energy_save:0.20,ration:0.85,regen_boost:1.10,shield:false},
+  'Emergency Survival':  {activity:0.50,energy_save:0.45,ration:0.60,regen_boost:1.30,shield:true },
+  'Energy Conservative': {activity:0.90,energy_save:0.35,ration:0.90,regen_boost:0.90,shield:false},
+  'Medical Priority':    {activity:0.75,energy_save:0.15,ration:0.95,regen_boost:1.05,shield:true },
+  'Maximum Output':      {activity:1.20,energy_save:-0.10,ration:1.10,regen_boost:0.80,shield:false},
+  'Stealth Mode':        {activity:0.60,energy_save:0.50,ration:0.70,regen_boost:1.20,shield:true },
+  'Balanced Recovery':   {activity:0.80,energy_save:0.25,ration:0.80,regen_boost:1.15,shield:false},
+};
+
+const MD_KEY_MAP = {
+  'Normal':'Normal','Dynamic AI':'DynamicAI','Emergency Survival':'EmergencySurvival',
+  'Energy Conservative':'EnergyConservative','Medical Priority':'MedicalPriority',
+  'Maximum Output':'MaximumOutput','Stealth Mode':'StealthMode','Balanced Recovery':'BalancedRecovery',
+};
+function updateModeDesc(){
+  const m = document.getElementById('p_aimode').value;
+  document.getElementById('mode-desc').textContent = T('md_' + MD_KEY_MAP[m]) || '';
+}
+
+// ============================================================
+// Tab switching
+// ============================================================
+let cmpInitDone = false;
+function switchTab(tab){
+  document.getElementById('live-view').classList.toggle('hidden', tab !== 'live');
+  document.getElementById('cmp-view').classList.toggle('hidden', tab !== 'compare');
+  document.getElementById('tab-live').classList.toggle('active', tab === 'live');
+  document.getElementById('tab-compare').classList.toggle('active', tab === 'compare');
+  if (tab === 'compare' && !cmpInitDone){ initCmpCharts(); cmpInitDone = true; }
+}
+
+// ============================================================
+// Build compare mode checkboxes
+// ============================================================
+let selModes = new Set(ALL_MODES);
+function buildModeCBs(){
+  const c = document.getElementById('cmp-mode-list');
+  c.innerHTML = '';
+  ALL_MODES.forEach(m => {
+    const d = document.createElement('div');
+    d.className = 'mode-item' + (selModes.has(m) ? ' sel' : '');
+    d.innerHTML = `<div class="mode-dot" style="background:${MODE_COLORS[m]};
+      box-shadow:0 0 5px ${MODE_COLORS[m]};"></div>
+      <span>${m}</span>`;
+    d.onclick = () => {
+      if (selModes.has(m)){
+        if (selModes.size > 1){ selModes.delete(m); d.classList.remove('sel'); }
+      } else { selModes.add(m); d.classList.add('sel'); }
+    };
+    c.appendChild(d);
+  });
+}
+
+// ============================================================
+// ── CHART HELPERS ──
+// ============================================================
+function dc(o){ return JSON.parse(JSON.stringify(o)); }
+
+const BASE_OPT = {
+  animation:false, responsive:true, maintainAspectRatio:false,
+  interaction:{mode:'index',intersect:false},
+  plugins:{
+    legend:{labels:{color:'rgba(0,212,255,.7)',
+      font:{size:10,family:"'Share Tech Mono',Courier New"},boxWidth:10,padding:5}},
+    tooltip:{
+      backgroundColor:'rgba(2,12,30,.96)',borderColor:'rgba(0,212,255,.3)',borderWidth:1,
+      titleColor:'#00d4ff',bodyColor:'rgba(0,212,255,.88)',
+      titleFont:{family:"'Share Tech Mono',Courier New",size:10},
+      bodyFont:{family:"'Share Tech Mono',Courier New",size:10},
+    }
+  },
+  scales:{
+    x:{ticks:{color:'rgba(0,212,255,.42)',font:{size:9},maxTicksLimit:6,maxRotation:0},
+       grid:{color:'rgba(0,212,255,.055)'}},
+    y:{ticks:{color:'rgba(0,212,255,.42)',font:{size:10}},grid:{color:'rgba(0,212,255,.055)'}}
+  }
+};
+
+// ── Live charts ──
+const MAX_PTS = 72;
+let LC = {};
+
+function initLiveCharts(){
+  const o1 = dc(BASE_OPT); o1.scales.y.min=0; o1.scales.y.max=100;
+  LC.res = new Chart(document.getElementById('ch-res'),{
+    type:'line', options:o1,
+    data:{labels:[],datasets:[
+      {label:'O₂',         data:[],borderColor:'#00aaff',backgroundColor:'transparent',borderWidth:1.6,pointRadius:0,tension:.4},
+      {label:T('rl_food'), data:[],borderColor:'#00ff88',backgroundColor:'transparent',borderWidth:1.6,pointRadius:0,tension:.4},
+      {label:T('rl_water'),data:[],borderColor:'#00ffcc',backgroundColor:'transparent',borderWidth:1.6,pointRadius:0,tension:.4},
+      {label:T('rl_nrg'),  data:[],borderColor:'#ffcc00',backgroundColor:'transparent',borderWidth:1.6,pointRadius:0,tension:.4},
+      {label:T('rl_health'),data:[],borderColor:'#ff4444',backgroundColor:'transparent',borderWidth:1.6,pointRadius:0,tension:.4},
+    ]}
+  });
+
+  const o2 = dc(BASE_OPT); o2.scales.y.min=0; o2.scales.y.max=100;
+  o2.plugins.legend.display = false;
+  LC.stab = new Chart(document.getElementById('ch-stab'),{
+    type:'line', options:o2,
+    data:{labels:[],datasets:[
+      {label:'Stability',data:[],borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,.06)',
+       borderWidth:2,pointRadius:0,fill:true,tension:.4}
+    ]}
+  });
+
+  LC.rt = new Chart(document.getElementById('ch-rt'),{
+    type:'line',
+    options:{
+      animation:false,responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'rgba(0,212,255,.7)',
+        font:{size:10,family:"'Share Tech Mono',Courier New"},boxWidth:10,padding:5}},
+        tooltip:BASE_OPT.plugins.tooltip},
+      scales:{
+        x:{ticks:{color:'rgba(0,212,255,.42)',font:{size:9},maxTicksLimit:6,maxRotation:0},
+           grid:{color:'rgba(0,212,255,.055)'}},
+        yR:{type:'linear',position:'left', min:0,max:100,
+            ticks:{color:'#ff6600',font:{size:10}},grid:{color:'rgba(0,212,255,.055)'}},
+        yT:{type:'linear',position:'right',
+            ticks:{color:'#66ccff',font:{size:10}},grid:{drawOnChartArea:false}}
+      }
+    },
+    data:{labels:[],datasets:[
+      {label:T('rl_rad'), data:[],borderColor:'#ff6600',backgroundColor:'transparent',
+       borderWidth:1.6,pointRadius:0,tension:.4,yAxisID:'yR'},
+      {label:'Temp°C',    data:[],borderColor:'#66ccff',backgroundColor:'transparent',
+       borderWidth:1.6,pointRadius:0,tension:.4,yAxisID:'yT'},
+    ]}
+  });
+
+  const o4 = dc(BASE_OPT); o4.scales.y.min=0; o4.plugins.legend.display=false;
+  LC.surv = new Chart(document.getElementById('ch-surv'),{
+    type:'line', options:o4,
+    data:{labels:[],datasets:[
+      {label:T('lb_surv'),data:[],borderColor:'#00ff88',backgroundColor:'rgba(0,255,136,.05)',
+       borderWidth:2,pointRadius:0,fill:true,tension:.4}
+    ]}
+  });
+}
+
+function refreshLiveChartLabels(){
+  if (!LC.res) return;
+  const ds = LC.res.data.datasets;
+  if(ds[1]) ds[1].label = T('rl_food');
+  if(ds[2]) ds[2].label = T('rl_water');
+  if(ds[3]) ds[3].label = T('rl_nrg');
+  if(ds[4]) ds[4].label = T('rl_health');
+  LC.res.update('none');
+  if(LC.rt?.data?.datasets[0]) LC.rt.data.datasets[0].label = T('rl_rad');
+  if(LC.rt) LC.rt.update('none');
+}
+
+function pushLiveCharts(pt){
+  const lbl = `D${pt.day}h${String(pt.hour).padStart(2,'0')}`;
+  function push(ch, vals){
+    if(ch.data.labels.length >= MAX_PTS){
+      ch.data.labels.shift();
+      ch.data.datasets.forEach(ds => ds.data.shift());
+    }
+    ch.data.labels.push(lbl);
+    vals.forEach((v,i) => ch.data.datasets[i].data.push(v));
+    ch.update('none');
+  }
+  push(LC.res,  [pt.oxygen,pt.food,pt.water,pt.energy,pt.health]);
+  push(LC.stab, [pt.stability]);
+  push(LC.rt,   [pt.radiation,pt.temperature]);
+  push(LC.surv, [pt.survivalPrediction]);
+  const sc = pt.stability>70?'#00d4ff':pt.stability>30?'#ffaa00':'#ff3355';
+  const sds = LC.stab.data.datasets[0];
+  sds.borderColor = sc;
+  sds.backgroundColor = sc==='#00d4ff'?'rgba(0,212,255,.06)':sc==='#ffaa00'?'rgba(255,170,0,.07)':'rgba(255,51,85,.07)';
+}
+function clearLiveCharts(){
+  Object.values(LC).forEach(c=>{
+    c.data.labels=[];
+    c.data.datasets.forEach(ds=>ds.data=[]);
+    c.update('none');
+  });
+}
+
+// ── Compare charts ──
+let CC = {};
+function initCmpCharts(){
+  const mkOpt = (yMax, noLegend) => {
+    const o = dc(BASE_OPT);
+    o.scales.y.min = 0;
+    if (yMax !== undefined) o.scales.y.max = yMax;
+    if (noLegend) o.plugins.legend.display = false;
+    o.plugins.legend.labels.font.size = 10;
+    o.plugins.legend.labels.padding   = 4;
+    return o;
+  };
+  CC.surv   = new Chart(document.getElementById('cc-ch-surv'),
+    {type:'line',options:mkOpt(undefined,false),data:{labels:[],datasets:[]}});
+  CC.o2     = new Chart(document.getElementById('cc-ch-o2'),
+    {type:'line',options:mkOpt(100,false),     data:{labels:[],datasets:[]}});
+  CC.energy = new Chart(document.getElementById('cc-ch-en'),
+    {type:'line',options:mkOpt(100,false),     data:{labels:[],datasets:[]}});
+  CC.health = new Chart(document.getElementById('cc-ch-health'),
+    {type:'line',options:mkOpt(100,false),     data:{labels:[],datasets:[]}});
+}
+
+function updateCmpCharts(results){
+  const maxLen     = Math.max(...results.map(r => r.history.length), 1);
+  const step       = Math.max(1, Math.floor(maxLen / 120));
+  const sampledIdx = Array.from({length:maxLen},(_,i)=>i).filter(i=>i%step===0);
+  const labels     = sampledIdx.map(i=>`D${i+1}`);
+
+  function mkDS(key){
+    return results.map(r => ({
+      label: r.mode,
+      data:  sampledIdx.map(i => r.history[i]?.[key] ?? null),
+      borderColor: MODE_COLORS[r.mode],
+      backgroundColor: 'transparent',
+      borderWidth: 2.2,
+      pointRadius: 0,
+      tension: .32,
+    }));
+  }
+  const keyMap = {surv:'survivalPrediction',o2:'oxygen',energy:'energy',health:'health'};
+  ['surv','o2','energy','health'].forEach(k=>{
+    CC[k].data.labels   = labels;
+    CC[k].data.datasets = mkDS(keyMap[k]);
+    CC[k].update();
+  });
+}
+
+function updateCmpTable(results){
+  const sorted = [...results].sort((a,b)=>{
+    const ga = a.history.slice(-1)[0]?.survivalPrediction ?? 0;
+    const gb = b.history.slice(-1)[0]?.survivalPrediction ?? 0;
+    return gb - ga;
+  });
+  const medals = ['🥇','🥈','🥉'];
+
+  let h = `<table class="cmp-tbl">
+    <thead><tr>
+      <th>${T('tr_rank')}</th><th>${T('tr_strat')}</th><th>${T('tr_surv')}</th>
+      <th>${T('tr_o2')}</th><th>${T('tr_food')}</th><th>${T('tr_water')}</th>
+      <th>${T('tr_nrg')}</th><th>${T('tr_health')}</th><th>${T('tr_status')}</th>
+    </tr></thead><tbody>`;
+
+  sorted.forEach((r,i)=>{
+    const last   = r.history.slice(-1)[0] || {};
+    const sv     = (last.survivalPrediction ?? 0).toFixed(1);
+    const color  = MODE_COLORS[r.mode];
+    const medal  = medals[i] || `${i+1}`;
+    const stc    = r.survived ? 'var(--good)' : 'var(--danger)';
+    const sttxt  = r.survived ? T('tr_survived') : T('tr_failed');
+
+    function cc(v, inv=false){
+      const e = inv?100-v:v;
+      return e>70?'var(--good)':e>30?'var(--warn)':'var(--danger)';
+    }
+
+    h += `<tr>
+      <td style="text-align:center;font-size:15px;">${medal}</td>
+      <td><span style="color:${color};font-weight:bold;text-shadow:0 0 8px ${color};">${r.mode}</span></td>
+      <td style="color:${cc(parseFloat(sv))};font-size:14px;font-weight:bold;">${sv}</td>
+      <td style="color:${cc(last.oxygen??0)};">${(last.oxygen??0).toFixed(1)}</td>
+      <td style="color:${cc(last.food??0)};">${(last.food??0).toFixed(1)}</td>
+      <td style="color:${cc(last.water??0)};">${(last.water??0).toFixed(1)}</td>
+      <td style="color:${cc(last.energy??0)};">${(last.energy??0).toFixed(1)}</td>
+      <td style="color:${cc(last.health??0)};">${(last.health??0).toFixed(1)}</td>
+      <td style="color:${stc};font-weight:bold;">${sttxt}</td>
+    </tr>`;
+  });
+
+  h += '</tbody></table>';
+  document.getElementById('cmp-tbl-wrap').innerHTML = h;
+}
+
+// ============================================================
+// JS Simulation Engine (client-side, for compare mode)
+// ============================================================
+function runSim(initParams, modeName, totalDays, stochastic){
+  const mode = PARAMS_JS[modeName];
+  if (!mode) return {mode:modeName,history:[],finalState:{},survived:false};
+
+  let s = {
+    oxygen:      initParams.oxygen      ?? 100,
+    food:        initParams.food        ?? 100,
+    water:       initParams.water       ?? 100,
+    energy:      initParams.energy      ?? 100,
+    health:      100,
+    stability:   100,
+    radiation:   initParams.radiation   ?? 10,
+    temperature: initParams.temperature ?? 22,
+    solarActive: false,
+    survivalPrediction: totalDays,
+  };
+  const crew      = initParams.crewCount ?? 4;
+  const initRad   = initParams.radiation ?? 10;
+  const stormP    = (initParams.solarStormProbability ?? 5) / 100 / 24;
+
+  const history = [];
+  let failed = false;
+
+  for (let tick = 0; tick < totalDays * 24 && !failed; tick++){
+    const hour = tick % 24;
+    const day  = Math.floor(tick / 24);
+    const eff  = Math.max(0.5, 1.0 - (day / 365.0) * 0.20);
+
+    // Solar storm
+    if (stochastic){
+      if (!s.solarActive && Math.random() < stormP)
+        { s.solarActive = true; s.radiation = Math.min(100, s.radiation + 20); }
+      else if (s.solarActive && Math.random() < 0.06)
+        { s.solarActive = false; }
+      if (s.solarActive) s.radiation = Math.min(100, s.radiation + 0.8);
+    }
+
+    // Circadian rhythm (Suggestion 1)
+    const isDay  = hour >= 6 && hour < 22;
+    const activ  = isDay ? mode.activity : mode.activity * 0.40;
+
+    // O2 consumption + electrolysis regen (Suggestions 2, 4)
+    const radFac = 1.0 + (s.radiation / 100.0) * 0.30;
+    const o2Con  = crew * activ * radFac * 0.03;
+    const rEff   = mode.regen_boost * eff;
+    let o2Gen = 0, wElec = 0;
+    if (s.energy > 50){
+      const er = 0.50 * rEff * (1.0 - mode.energy_save * 0.5);
+      o2Gen = er * 0.015; wElec = er * 0.008;
+    } else if (s.energy > 20){
+      const fr = (s.energy - 20.0) / 30.0;
+      o2Gen = 0.015 * fr * rEff; wElec = 0.004 * fr;
+    }
+    s.oxygen = Math.max(0, Math.min(100, s.oxygen - o2Con + o2Gen));
+
+    // Food
+    const hf   = s.health >= 50 ? 1.0 : s.health / 50.0;
+    const fCon = crew * activ * mode.ration * 0.02 * hf;
+    s.food = Math.max(0, s.food - fCon);
+
+    // Water
+    const wCon = crew * activ * 0.025;
+    const wRec = crew * 0.008 * eff;            // Suggestion 2: water recycling
+    const netW = wCon - wRec + wElec;
+    s.water = Math.max(0, Math.min(100, s.water - netW));
+
+    // Energy + solar (Suggestions 2, 3)
+    const sysL  = 1.0 - mode.energy_save;
+    const tmpC  = Math.abs(s.temperature - 22.0) * 0.02;
+    let eCon    = sysL * 0.05 + s.radiation * 0.01 + tmpC * 0.03;
+    if (s.radiation > 60) eCon *= 1.0 + (s.radiation - 60.0) / 100.0;
+    let solar = 0;
+    if (!s.solarActive && hour >= 8 && hour <= 18)
+      solar = 0.08 * Math.sin(Math.PI * (hour - 8.0) / 10.0) * eff;
+    s.energy = Math.max(0, Math.min(100, s.energy - eCon + solar));
+
+    // Health (Suggestion 4: coupled damage)
+    const shEff  = 0.50 * eff * (mode.shield ? 1.5 : 1.0);
+    let radDmg   = s.radiation * 0.001;
+    if (s.energy > 30) radDmg *= shEff;
+    s.health = Math.max(0, Math.min(100, s.health - radDmg));
+    if (s.food   < 20) s.health = Math.max(0, s.health - 0.10);
+    if (s.oxygen < 30) s.health = Math.max(0, s.health - 0.30);
+    if (s.water  < 20) s.health = Math.max(0, s.health - 0.15);
+
+    // Rad decay
+    if (!s.solarActive) s.radiation = Math.max(initRad, s.radiation - 0.30);
+
+    // AI auto-intervention
+    if (s.energy < 40.0){
+      const boost = 1.5 * mode.energy_save;
+      s.energy = Math.min(100, s.energy + boost);
+    }
+
+    // Stability
+    s.stability = Math.max(0, Math.min(100,
+      (s.oxygen+s.food+s.water+s.energy+s.health)/5.0 - (s.radiation/100.0)*20.0));
+
+    // Survival prediction (Suggestion 7: coupling correction)
+    const EPS  = 1e-4;
+    const o2nr = Math.max(EPS, o2Con - o2Gen);
+    const fnr  = Math.max(EPS, fCon);
+    const wnr  = Math.max(EPS, netW);
+    const enr  = Math.max(EPS, eCon - solar);
+    let oh = s.oxygen/o2nr, fh = s.food/fnr, wh = s.water/wnr, eh = s.energy/enr;
+    if (eh < oh && s.energy > 0){ const oz=s.oxygen-o2Con*eh; oh=eh+Math.max(0,oz/Math.max(EPS,o2Con)); }
+    if (wh < oh && s.water  > 0){ const ow=s.oxygen-o2Con*wh; oh=wh+Math.max(0,ow/Math.max(EPS,o2Con)); }
+    s.survivalPrediction = Math.max(0, Math.min(oh,fh,wh,eh)/24.0);
+
+    // Failure
+    if (s.oxygen<=0||s.health<=0||s.food<=0||s.water<=0){
+      failed = true;
+      history.push({day:day+1,oxygen:0,food:s.food,water:s.water,energy:s.energy,
+        health:0,stability:0,radiation:s.radiation,survivalPrediction:0});
+      break;
+    }
+    // Daily snapshot
+    if (hour === 23){
+      history.push({
+        day:day+1, oxygen:+s.oxygen.toFixed(2), food:+s.food.toFixed(2),
+        water:+s.water.toFixed(2), energy:+s.energy.toFixed(2), health:+s.health.toFixed(2),
+        stability:+s.stability.toFixed(2), radiation:+s.radiation.toFixed(2),
+        survivalPrediction:+s.survivalPrediction.toFixed(1), equipEff:+eff.toFixed(3),
+      });
+    }
+  }
+  return {mode:modeName, history, finalState:{...s}, survived:!failed};
+}
+
+function runComparison(){
+  const params = {
+    crewCount:             +document.getElementById('c_crew').value,
+    oxygen:                +document.getElementById('c_o2').value,
+    food:                  +document.getElementById('c_food').value,
+    water:                 +document.getElementById('c_water').value,
+    energy:                +document.getElementById('c_nrg').value,
+    radiation:             +document.getElementById('c_rad').value,
+    temperature:           +document.getElementById('c_temp').value,
+    solarStormProbability: +document.getElementById('c_solar').value,
+  };
+  const days      = Math.max(30, Math.min(730, +document.getElementById('c_days').value));
+  const stochastic = document.getElementById('c_stoch').checked;
+  const modes      = [...selModes];
+
+  const prog = document.getElementById('cmp-prog');
+  prog.textContent = T('cc_calc');
+  prog.classList.remove('hidden');
+
+  setTimeout(()=>{
+    if (!cmpInitDone){ initCmpCharts(); cmpInitDone = true; }
+    const results = modes.map(m => runSim(params, m, days, stochastic));
+    updateCmpCharts(results);
+    updateCmpTable(results);
+    prog.classList.add('hidden');
+  }, 60);
+}
+
+// ============================================================
+// ── LIVE API ──
+// ============================================================
+const API     = '/api/sim';
+let pollTimer = null, lastTick = -1, curStatus = 'standby';
+
+function setHdrStatus(key, cls, border){
+  curStatus = key;
+  const el = document.getElementById('hdr-status');
+  el.textContent  = `■ ${T('st_'+key)}`;
+  el.className    = cls;
+  el.style.borderColor = border;
+}
+
+async function startSim(){
+  const body = {
+    crewCount:             +document.getElementById('p_crew').value,
+    speed:                 +document.getElementById('p_speed').value,
+    oxygen:                +document.getElementById('p_o2').value,
+    food:                  +document.getElementById('p_food').value,
+    water:                 +document.getElementById('p_water').value,
+    energy:                +document.getElementById('p_nrg').value,
+    radiation:             +document.getElementById('p_rad').value,
+    temperature:           +document.getElementById('p_temp').value,
+    solarStormProbability: +document.getElementById('p_solar').value,
+    aiMode:                document.getElementById('p_aimode').value,
+  };
+  try {
+    const r = await fetch(`${API}/start`,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if (r.ok){
+      clearLiveCharts(); lastTick = -1;
+      setHdrStatus('running','c-good','rgba(0,255,136,.4)');
+      document.getElementById('hdr-spd').textContent = `×${body.speed}`;
+      startPoll();
+    }
+  } catch(e){ showBackendErr(); }
+}
+
+async function togglePause(){
+  try {
+    const r = await fetch(`${API}/pause`,{method:'POST'});
+    const d = await r.json();
+    setHdrStatus(d.paused?'paused':'running',
+      d.paused?'c-warn':'c-good',
+      d.paused?'rgba(255,170,0,.4)':'rgba(0,255,136,.4)');
+  } catch(e){}
+}
+
+async function resetSim(){
+  stopPoll();
+  try { await fetch(`${API}/reset`,{method:'POST'}); } catch(e){}
+  setHdrStatus('standby','c-dim','rgba(0,212,255,.25)');
+  document.getElementById('hdr-timer').textContent = 'DAY 000 | HR 00';
+  document.getElementById('hdr-spd').textContent   = '×1';
+  document.getElementById('surv-days').textContent = '---';
+  document.getElementById('crit-res').textContent  = `${T('crit')}: ---`;
+  clearLiveCharts(); lastTick = -1;
+}
+
+function showBackendErr(){
+  document.getElementById('elog').innerHTML =
+    `<div class="c-danger" style="padding:8px;line-height:1.6;">${T('backendErr')}</div>`;
+}
+
+function startPoll(){ stopPoll(); pollTimer = setInterval(doPoll, 950); }
+function stopPoll() { if(pollTimer){ clearInterval(pollTimer); pollTimer = null; } }
+
+async function doPoll(){
+  try {
+    const r = await fetch(`${API}/status`);
+    if (!r.ok) return;
+    const d = await r.json();
+    (d.recentHistory||[]).forEach(pt=>{
+      if (pt.tick > lastTick){ pushLiveCharts(pt); lastTick = pt.tick; }
+    });
+    updateLiveUI(d);
+    if (!d.running && d.missionTime > 0){
+      setHdrStatus('stopped','c-danger','rgba(255,51,85,.4)');
+      stopPoll();
+    }
+  } catch(e){}
+}
+
+// ============================================================
+// ── LIVE UI UPDATE ──
+// ============================================================
+function vc(v,inv=false){ const e=inv?100-v:v; return e>70?'#00ff88':e>30?'#ffaa00':'#ff3355'; }
+
+function updateLiveUI(d){
+  const hr  = (d.missionTime||0) % 24;
+  const day = d.missionDay || 0;
+
+  document.getElementById('hdr-timer').textContent = `DAY ${String(day).padStart(3,'0')} | HR ${String(hr).padStart(2,'0')}`;
+  document.getElementById('hdr-ai').textContent    = `AI: ${(d.aiMode||'').toUpperCase()}`;
+  document.getElementById('hdr-equip').textContent = `EQUIP:${(d.equipmentEfficiency||1).toFixed(2)}`;
+  document.getElementById('hdr-storm').classList.toggle('hidden', !d.solarStormActive);
+
+  // Resource bars
+  const rows = [
+    {key:'oxygen',    lbl:T('rl_o2'),   icon:'⬟',inv:false},
+    {key:'food',      lbl:T('rl_food'), icon:'◈',inv:false},
+    {key:'water',     lbl:T('rl_water'),icon:'◇',inv:false},
+    {key:'energy',    lbl:T('rl_nrg'),  icon:'⚡',inv:false},
+    {key:'health',    lbl:T('rl_health'),icon:'♥',inv:false},
+    {key:'radiation', lbl:T('rl_rad'),  icon:'☢',inv:true },
+    {key:'stability', lbl:T('rl_stab'), icon:'◉',inv:false},
+  ];
+  let rh = '';
+  rows.forEach(r=>{
+    const v = +(d[r.key]||0);
+    const pct = Math.min(100, Math.max(0, v));
+    const bpct= r.inv ? Math.max(0,100-pct) : pct;
+    rh += `<div style="margin-bottom:9px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+        <span style="color:var(--label);">${r.icon} ${r.lbl}</span>
+        <span style="color:${vc(v,r.inv)};font-weight:bold;">${v.toFixed(1)}</span>
+      </div>
+      <div class="rbar"><div class="rbar-fill" style="width:${bpct}%;background:${vc(bpct)};"></div></div>
+    </div>`;
+  });
+  document.getElementById('res-panel').innerHTML = rh;
+
+  // Flags
+  const snap  = (d.recentHistory||[]).slice(-1)[0] || {};
+  const isDay = hr >= 6 && hr < 22;
+  const act   = d.activityFactor || 0;
+  const eq    = d.equipmentEfficiency || 1;
+
+  const fa = document.getElementById('fl-act');
+  fa.textContent = act.toFixed(2); fa.className = act > 0.7 ? 'c-good' : 'c-warn';
+
+  const fe = document.getElementById('fl-equip');
+  fe.textContent = eq.toFixed(2); fe.className = eq > 0.8 ? 'c-good' : eq > 0.6 ? 'c-warn' : 'c-danger';
+
+  const fp = document.getElementById('fl-phase');
+  fp.textContent = isDay ? `☀ ${T('dn_day')}` : `🌙 ${T('dn_night')}`;
+  fp.className   = isDay ? 'c-warn' : 'c-dim';
+
+  const fem = document.getElementById('fl-em');
+  fem.textContent = d.emergencyMode ? `⚠ ACTIVE` : T('fl_off');
+  fem.className   = d.emergencyMode ? 'c-danger' : 'c-good';
+
+  const fss = document.getElementById('fl-solar');
+  fss.textContent = d.solarStormActive ? `⚡ ${T('hdr_storm')}` : T('fl_clear');
+  fss.className   = d.solarStormActive ? 'c-danger' : 'c-good';
+
+  document.getElementById('fl-sol-out').textContent = `${(snap.solarOutput||0).toFixed(4)}/h`;
+  document.getElementById('fl-o2r').textContent     = `${(snap.o2Regen||0).toFixed(4)}/h`;
+  document.getElementById('fl-wtr').textContent     = `${(snap.waterRecycling||0).toFixed(4)}/h`;
+
+  // Survival
+  const sv   = d.survivalPrediction || 0;
+  const svEl = document.getElementById('surv-days');
+  const svC  = sv > 30 ? '#00ff88' : sv > 7 ? '#ffaa00' : '#ff3355';
+  svEl.textContent      = sv.toFixed(1);
+  svEl.style.color      = svC;
+  svEl.style.textShadow = `0 0 14px ${svC}`;
+
+  const rl = [
+    {n:T('rl_o2'),   v:d.oxygen},  {n:T('rl_food'),   v:d.food},
+    {n:T('rl_water'),v:d.water},   {n:T('rl_nrg'),    v:d.energy},
+    {n:T('rl_health'),v:d.health}
+  ];
+  const cr = rl.reduce((m,r)=>(r.v||0)<(m.v||0)?r:m, rl[0]);
+  const ce = document.getElementById('crit-res');
+  ce.textContent = `${T('crit')}: ${cr.n} (${(cr.v||0).toFixed(1)}%)`;
+  ce.style.color = (cr.v||0) < 30 ? '#ff3355' : '#ffaa00';
+
+  updateSVG(d, snap, hr);
+  updateElog(d.events || []);
+}
+
+// ── SVG module update ──
+const MOD_MAP = [
+  {g:'mod-o2', lt:'lt-o2', vl:'sv-o2', k:'oxygen',    inv:false, fmt:v=>`${v.toFixed(1)}%`},
+  {g:'mod-en', lt:'lt-en', vl:'sv-en', k:'energy',    inv:false, fmt:v=>`${v.toFixed(1)}%`},
+  {g:'mod-wt', lt:'lt-wt', vl:'sv-wt', k:'water',     inv:false, fmt:v=>`${v.toFixed(1)}%`},
+  {g:'mod-med',lt:'lt-med',vl:'sv-med',k:'health',    inv:false, fmt:v=>`${v.toFixed(1)}%`},
+  {g:'mod-cc', lt:'lt-cc', vl:'sv-cc', k:'food',      inv:false, fmt:v=>`${v.toFixed(1)}%`},
+  {g:'mod-rad',lt:'lt-rad',vl:'sv-rad',k:'radiation', inv:true,  fmt:v=>`${v.toFixed(1)}`},
+];
+const LCS = {ok:'#00ff88',warn:'#ffaa00',crit:'#ff3355'};
+function svgSt(v,inv){ const e=inv?100-v:v; return e>70?'ok':e>30?'warn':'crit'; }
+
+function updateSVG(d, snap, hr){
+  MOD_MAP.forEach(m=>{
+    const v  = +(d[m.k]||0);
+    const st = svgSt(v,m.inv);
+    const g  = document.getElementById(m.g);
+    const lt = document.getElementById(m.lt);
+    const vl = document.getElementById(m.vl);
+    if (!g||!lt||!vl) return;
+    g.className.baseVal = `mod-${st}`;
+    lt.setAttribute('fill',LCS[st]);
+    vl.textContent = m.fmt(v); vl.setAttribute('fill',LCS[st]);
+  });
+  const stab = d.stability||0;
+  const sel  = document.getElementById('sv-stab');
+  if (sel){ sel.textContent = stab.toFixed(1)+'%'; sel.setAttribute('fill',LCS[svgSt(stab,false)]); }
+
+  const isDay = hr >= 6 && hr < 22;
+  const dni   = document.getElementById('dn-icon');
+  const dnt   = document.getElementById('dn-text');
+  if (dni){ dni.textContent=isDay?'☀':'🌙'; dni.setAttribute('fill',isDay?'#ffcc00':'#6688bb'); }
+  if (dnt) dnt.textContent = isDay ? T('dn_day') : T('dn_night');
+
+  const ft = document.getElementById('sv-footer');
+  if (ft) ft.textContent =
+    `ACTIVITY:${(d.activityFactor||0).toFixed(2)} | EQUIP:${(d.equipmentEfficiency||0).toFixed(2)}` +
+    ` | O₂REGEN:${(snap.o2Regen||0).toFixed(4)}/h | H₂O REC:${(snap.waterRecycling||0).toFixed(4)}/h`;
+
+  document.getElementById('panel-mid')
+    .classList.toggle('emergency', !!(d.emergencyMode||d.solarStormActive));
+}
+
+// ── Event log ──
+const EV_COL = {
+  AI_DISPATCH:'rgba(0,212,255,.9)',SOLAR_STORM:'#ff7700',SOLAR_STORM_END:'#00ff88',
+  OXYGEN_LEAK:'#ff3355',COLDCHAIN_FAIL:'#66ccff',ENERGY_FAIL:'#ffcc00',
+  MEDICAL_EMERGENCY:'#ff5555',MISSION_FAILED:'#ff0033',
+};
+function updateElog(events){
+  if (!events.length) return;
+  const el = document.getElementById('elog');
+  el.innerHTML = events.slice(-14).reverse().map(ev=>{
+    const c = EV_COL[ev.type] || 'rgba(0,212,255,.65)';
+    return `<div style="color:${c};margin-bottom:6px;line-height:1.55;
+      border-left:2px solid ${c};padding-left:7px;">${ev.description}</div>`;
+  }).join('');
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+initLiveCharts();
+buildModeCBs();
+applyLang();
+updateModeDesc();
+</script>
+</body>
+</html>
