@@ -212,7 +212,9 @@
 
     <script>
         // 【防彈核心】：強制前端指名道姓地連接 127.0.0.1 IPv4 位址，徹底封殺 localhost 故障
-const BACKEND_URL = 'http://127.0.0.1:5001/api';
+const BACKEND_URL = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
+    ? 'http://127.0.0.1:5001/api/space' 
+    : '/api/space';
 
 function showError(id, message) {
     const loadingEl = document.getElementById(`${id}-loading`);

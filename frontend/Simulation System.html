@@ -1027,7 +1027,9 @@ function runComparison(){
 // ============================================================
 // ── LIVE API ──
 // ============================================================
-const API = 'http://127.0.0.1:5000/api';
+const API = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
+    ? 'http://127.0.0.1:5000/api/sim' 
+    : '/api/sim';
 let pollTimer = null, lastTick = -1, curStatus = 'standby';
 
 function setHdrStatus(key, cls, border){
