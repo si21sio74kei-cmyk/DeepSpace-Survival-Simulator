@@ -1,12 +1,16 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/**/*.py", "use": "@vercel/python" }
+    { "src": "frontend/**", "use": "@vercel/static" },
+    { "src": "backend/Simulation_System.py", "use": "@vercel/python" },
+    { "src": "backend/Space_Data_Center.py", "use": "@vercel/python" },
+    { "src": "backend/Mission_Dashboard.py", "use": "@vercel/python" }
   ],
   "routes": [
-    { "src": "/api/sim/(.*)", "dest": "/api/simulation_system.py" },
-    { "src": "/api/space/(.*)", "dest": "/api/space_data_center.py" },
-    { "src": "/api/dash/(.*)", "dest": "/api/mission_dashboard.py" },
-    { "src": "/(.*)", "dest": "/frontend/DeepSpace%20Survival%20Simulator.html" }
+    { "src": "/api/sim/(.*)", "dest": "backend/Simulation_System.py" },
+    { "src": "/api/space/(.*)", "dest": "backend/Space_Data_Center.py" },
+    { "src": "/api/dash/(.*)", "dest": "backend/Mission_Dashboard.py" },
+    { "src": "/", "dest": "frontend/DeepSpace Survival Simulator.html" },
+    { "src": "/(.*)", "dest": "frontend/$1" }
   ]
 }
