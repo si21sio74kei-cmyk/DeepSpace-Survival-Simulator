@@ -62,14 +62,20 @@
         #app-frame { width: 100%; height: 100%; border: none; }
         
         /* 悬浮返回按钮 */
+        /* 懸浮裝甲返回按鈕 */
         .btn-return {
-            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-            background: rgba(2, 6, 23, 0.95); border: 1px solid var(--border-dim);
-            border-top: none; border-radius: 0 0 6px 6px;
-            color: var(--text-dim); padding: 8px 32px;
-            font-size: 11px; letter-spacing: 0.25em; cursor: pointer; z-index: 110;
+            position: absolute; bottom: 30px; right: 30px;
+            background: rgba(2, 6, 23, 0.95); border: 1px solid var(--cyan-accent);
+            color: var(--cyan-accent); padding: 12px 24px;
+            font-size: 12px; font-weight: bold; letter-spacing: 0.2em; cursor: pointer; z-index: 110;
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.2);
+            clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
+            transition: all 0.3s;
         }
-        .btn-return:hover { color: #f8fafc; border-color: rgba(6, 182, 212, 0.5); }
+        .btn-return:hover { 
+            background: var(--cyan-accent); color: #000; 
+            box-shadow: 0 0 30px rgba(6, 182, 212, 0.6); 
+        }
 
         /* 隐藏类，供 Anime.js 调度 */
         .anim-hide { opacity: 0; }
@@ -195,7 +201,9 @@
     </div>
 
     <div id="iframe-wrapper">
-        <button id="btn-close" class="btn-return font-mono anim-hide" onclick="closeIframe()">⬡ CLOSE MODULE</button>
+        <button id="btn-close" class="btn-return font-mono anim-hide" onclick="closeIframe()">⏏ 返回主屏 (RETURN)</button>
+    ⏏ 返回主屏 (RETURN)
+        </button>
         <iframe id="app-frame" src=""></iframe>
     </div>
 
@@ -404,11 +412,11 @@
 
             anime({ targets: viewDash, scale: 0.97, opacity: 0, filter: 'blur(5px)', duration: 500, easing: 'easeOutExpo' });
             anime({ targets: iframeWrapper, opacity: [0, 1], translateY: [20, 0], duration: 600, easing: 'easeOutExpo' });
-            anime({ targets: btnClose, opacity: 1, translateY: [-30, 0], duration: 500, delay: 200, easing: 'easeOutExpo' });
+            anime({ targets: btnClose, opacity: [0, 1], translateX: [50, 0], duration: 600, delay: 300, easing: 'easeOutExpo' });
         }
 
         function closeIframe() {
-            anime({ targets: btnClose, translateY: [0, -30], opacity: 0, duration: 300, easing: 'easeInQuad' });
+            anime({ targets: btnClose, translateX: [0, 50], opacity: 0, duration: 300, easing: 'easeInQuad' });
             anime({
                 targets: iframeWrapper, opacity: 0, scale: 1.02, duration: 400, easing: 'easeInQuad',
                 complete: () => { iframeWrapper.style.display = 'none'; appFrame.src = ''; }

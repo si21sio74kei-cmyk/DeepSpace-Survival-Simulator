@@ -45,7 +45,7 @@
         <div class="flex items-center space-x-3">
             <span class="text-sm font-bold tracking-[3px] text-white">📊 SPACE-SURVIVAL PREDICTION</span>
             <span class="text-xs text-gray-500">│</span>
-            <span class="text-xs text-[var(--dim)]">ENGINE RUNNING ON 127.0.0.1:5002</span>
+            <span class="text-xs text-[var(--dim)]">ENGINE RUNNING ON 127.0.0.1:5000 (SHARED)</span>
         </div>
         <div id="sim-status" class="text-xs text-gray-500 font-bold border border-gray-600 px-2 py-1">■ STANDBY</div>
     </header>
@@ -168,7 +168,7 @@
                 document.getElementById('sim-status').innerText = "▶ SIM RUNNING";
                 document.getElementById('sim-status').className = "text-xs font-bold px-2 py-1 text-[var(--good)] border border-[var(--good)] shadow-[0_0_10px_var(--good)]";
                 if(!pollTimer) pollTimer = setInterval(pollData, 1000);
-            } catch(e) { alert("無法連接到 5002 後端"); }
+            } catch(e) { alert("無法連接到 5000 後端"); }
         }
 
         async function pauseSim() {
