@@ -62,18 +62,18 @@
         #app-frame { width: 100%; height: 100%; border: none; }
         
         /* 懸浮裝甲返回按鈕 (移至左上角) */
+        /* 裝甲返回按鈕 (置中於頂部導航列) */
         .btn-return {
-            position: absolute; top: 25px; left: 25px;
             background: rgba(2, 6, 23, 0.95); border: 1px solid var(--cyan-accent);
-            color: var(--cyan-accent); padding: 12px 24px;
-            font-size: 12px; font-weight: bold; letter-spacing: 0.2em; cursor: pointer; z-index: 110;
-            box-shadow: 0 0 15px rgba(6, 182, 212, 0.2);
+            color: var(--cyan-accent); padding: 8px 30px;
+            font-size: 14px; font-weight: bold; letter-spacing: 0.2em; cursor: pointer;
+            box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
             clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
             transition: all 0.3s;
         }
         .btn-return:hover { 
             background: var(--cyan-accent); color: #000; 
-            box-shadow: 0 0 30px rgba(6, 182, 212, 0.6); 
+            box-shadow: 0 0 25px rgba(6, 182, 212, 0.6); 
         }
 
         /* 隐藏类，供 Anime.js 调度 */
@@ -198,12 +198,14 @@
             </div>
         </div>
     </div>
+    <div id="iframe-wrapper" class="absolute inset-0 z-[9999] hidden flex-col bg-[var(--bg-base)]">
+        
+        <div class="relative w-full h-[65px] flex items-center justify-center border-b border-[var(--cyan-accent)] bg-[#020617]/90 shadow-[0_4px_20px_rgba(6,182,212,0.15)] z-[110]">
+            <button id="btn-close" class="btn-return font-mono" onclick="closeIframe()">⏏ 返回主屏 (RETURN)</button>
+        </div>
 
-    <div id="iframe-wrapper">
-        <button id="btn-close" class="btn-return font-mono anim-hide" onclick="closeIframe()">⏏ 返回主屏 (RETURN)</button>
-    ⏏ 返回主屏 (RETURN)
-        </button>
-        <iframe id="app-frame" src=""></iframe>
+        <iframe id="app-frame" class="w-full flex-1 border-0"></iframe>
+        
     </div>
 
     <script>
@@ -435,33 +437,30 @@
         });
         function openIframe(url) {
             appFrame.src = url;
-            iframeWrapper.style.display = 'block';
+            iframeWrapper.style.display = 'flex'; // 這裡要改成 flex
             
-            // 🛡️ 核心修復 1：把子頁面外框的層級強制拉到最頂端
             iframeWrapper.style.zIndex = '9999'; 
-            
-            // 🛡️ 核心修復 2：讓隱形的首頁失去「實體」，滑鼠可以直接穿透它
             viewDash.style.pointerEvents = 'none';
 
             anime({ targets: viewDash, scale: 0.97, opacity: 0, filter: 'blur(5px)', duration: 500, easing: 'easeOutExpo' });
             anime({ targets: iframeWrapper, opacity: [0, 1], translateY: [20, 0], duration: 600, easing: 'easeOutExpo' });
             
-            // 🛡️ 核心修復 3：確保 translateY 歸零，防止之前的動畫殘留
-            anime({ targets: btnClose, opacity: [0, 1], translateX: [-50, 0], translateY: 0, duration: 600, delay: 300, easing: 'easeOutExpo' });
+            // 💡 改回從上方降落 (translateY)
+            anime({ targets: btnClose, opacity: [0, 1], translateY: [-30, 0], duration: 600, delay: 300, easing: 'easeOutExpo' });
         }
 
         function closeIframe() {
-            // 🛡️ 核心修復 4：返回首頁時，把首頁的滑鼠點擊能力還給它
             viewDash.style.pointerEvents = 'auto';
 
-            anime({ targets: btnClose, translateX: [0, -50], opacity: 0, duration: 300, easing: 'easeInQuad' });
+            // 💡 改為向上收縮 (translateY)
+            anime({ targets: btnClose, translateY: [0, -30], opacity: 0, duration: 300, easing: 'easeInQuad' });
+            
             anime({
                 targets: iframeWrapper, opacity: 0, scale: 1.02, duration: 400, easing: 'easeInQuad',
                 complete: () => { iframeWrapper.style.display = 'none'; appFrame.src = ''; }
             });
             anime({ targets: viewDash, scale: 1, opacity: 1, filter: 'blur(0px)', duration: 600, easing: 'easeOutExpo' });
         }
-
         setInterval(() => {
             const clock = document.getElementById('clock-hero');
             if(clock) clock.innerText = new Date().toISOString().substring(11,19) + ' UTC';
