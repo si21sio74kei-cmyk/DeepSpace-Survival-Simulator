@@ -1,13 +1,14 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
+import os
 
 app = Flask(__name__)
 # 啟用 CORS，允許本地 index2.html 跨域訪問
 CORS(app)
 
 # 你的專屬 NASA API KEY
-NASA_KEY = '4lvYmjBb3NFCc4xpxVkrj7Ih4cWGWqbpkqUSkbaY'
+NASA_KEY = os.environ.get('NASA_API_KEY', '4lvYmjBb3NFCc4xpxVkrj7Ih4cWGWqbpkqUSkbaY')
 
 # [卡片 1] ISS 實時位置
 @app.route('/api/space/iss', methods=['GET'])
