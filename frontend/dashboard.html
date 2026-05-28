@@ -123,9 +123,10 @@
     </main>
 
     <script>
-        const API = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
-    ? 'http://127.0.0.1:5002/api/dash' 
-    : '/api/dash';
+    // 【統一數據大腦】：強制連線至 Simulation System 的核心
+    const API = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
+        ? 'http://127.0.0.1:5000/api/sim' 
+        : '/api/sim';
         let pollTimer = null;
         let simChart;
 
@@ -216,14 +217,15 @@
             updateBar('energy', data.energy);
             updateBar('health', data.health);
 
-            // 更新圖表
-            if (data.history && data.history.length > 0) {
-                const labels = data.history.map(h => `D${h.day}h${h.hour}`);
+            // 更新圖表 (兼容讀取 Simulation 引擎的 recentHistory 數據)
+            const chartData = data.recentHistory || data.history;
+            if (chartData && chartData.length > 0) {
+                const labels = chartData.map(h => `D${h.day}h${h.hour}`);
                 simChart.data.labels = labels;
-                simChart.data.datasets[0].data = data.history.map(h => h.oxygen);
-                simChart.data.datasets[1].data = data.history.map(h => h.food);
-                simChart.data.datasets[2].data = data.history.map(h => h.water);
-                simChart.data.datasets[3].data = data.history.map(h => h.energy);
+                simChart.data.datasets[0].data = chartData.map(h => h.oxygen);
+                simChart.data.datasets[1].data = chartData.map(h => h.food);
+                simChart.data.datasets[2].data = chartData.map(h => h.water);
+                simChart.data.datasets[3].data = chartData.map(h => h.energy);
                 simChart.update();
             }
         }
