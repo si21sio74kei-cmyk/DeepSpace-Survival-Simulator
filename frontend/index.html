@@ -366,10 +366,14 @@
                 }
             });
         });
-
         function showDashboard() {
             viewDash.classList.remove('hidden');
             document.querySelectorAll('.anim-dash').forEach(el => el.style.opacity = 0);
+
+            // 加入智能網址判定，去抓 5000 埠的真實數據
+            const STATUS_API = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
+                ? 'http://127.0.0.1:5000/api/sim/status' 
+                : '/api/sim/status';
 
             anime({
                 targets: '.anim-dash',
@@ -379,11 +383,37 @@
                 delay: anime.stagger(100),
                 easing: 'easeOutExpo',
                 complete: () => {
-                    anime({ targets: '#num-o2', innerHTML: [0, 84], round: 1, duration: 2000, easing: 'easeOutExpo' });
-                    anime({ targets: '#num-en', innerHTML: [0, 67], round: 1, duration: 2000, easing: 'easeOutExpo', delay: 100 });
-                    anime({ targets: '#num-surv', innerHTML: [0, 194], round: 1, duration: 2500, easing: 'easeOutExpo', delay: 200 });
+                    // 🌟 向伺服器拿真實數據
+                    fetch(STATUS_API)
+                        .then(res => res.json())
+                        .then(data => {
+                            // 拿到真實數據，如果伺服器剛啟動還沒有數據，預設顯示 100
+                            let realO2 = data.oxygen || 100;
+                            let realEn = data.energy || 100;
+                            let realSurv = data.survivalPrediction || 0;
+
+                            anime({ targets: '#num-o2', innerHTML: [0, realO2], round: 1, duration: 2000, easing: 'easeOutExpo' });
+                            anime({ targets: '#num-en', innerHTML: [0, realEn], round: 1, duration: 2000, easing: 'easeOutExpo', delay: 100 });
+                            anime({ targets: '#num-surv', innerHTML: [0, realSurv], round: 1, duration: 2500, easing: 'easeOutExpo', delay: 200 });
+                        })
+                        .catch(err => {
+                            // 如果伺服器沒開，退回展示用的預設假數字
+                            anime({ targets: '#num-o2', innerHTML: [0, 84], round: 1, duration: 2000, easing: 'easeOutExpo' });
+                            anime({ targets: '#num-en', innerHTML: [0, 67], round: 1, duration: 2000, easing: 'easeOutExpo', delay: 100 });
+                            anime({ targets: '#num-surv', innerHTML: [0, 194], round: 1, duration: 2500, easing: 'easeOutExpo', delay: 200 });
+                        });
                 }
             });
+            
+            anime({
+                targets: '.status-breathe',
+                opacity: [0.3, 1],
+                direction: 'alternate',
+                loop: true,
+                duration: 1500,
+                easing: 'easeInOutSine'
+            });
+        }
 
             anime({
                 targets: '.status-breathe',
