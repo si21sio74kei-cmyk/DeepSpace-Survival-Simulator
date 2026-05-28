@@ -165,3 +165,5 @@ def get_solar_storm():
              'instruments': '網路離線 / 本地星曆推演中',
              'note': '【警告】：深空監測網通聯遭遇干擾，正在嘗試重新連接...'
         }), 200
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=5001, debug=True)
