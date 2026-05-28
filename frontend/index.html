@@ -63,8 +63,9 @@
         
         /* 悬浮返回按钮 */
         /* 懸浮裝甲返回按鈕 */
+        /* 懸浮裝甲返回按鈕 (移至左上角) */
         .btn-return {
-            position: absolute; bottom: 30px; right: 30px;
+            position: absolute; top: 25px; left: 25px;
             background: rgba(2, 6, 23, 0.95); border: 1px solid var(--cyan-accent);
             color: var(--cyan-accent); padding: 12px 24px;
             font-size: 12px; font-weight: bold; letter-spacing: 0.2em; cursor: pointer; z-index: 110;
@@ -441,7 +442,7 @@
 
             anime({ targets: viewDash, scale: 0.97, opacity: 0, filter: 'blur(5px)', duration: 500, easing: 'easeOutExpo' });
             anime({ targets: iframeWrapper, opacity: [0, 1], translateY: [20, 0], duration: 600, easing: 'easeOutExpo' });
-            anime({ targets: btnClose, opacity: [0, 1], translateX: [50, 0], duration: 600, delay: 300, easing: 'easeOutExpo' });
+            anime({ targets: btnClose, translateX: [0, -50], opacity: 0, duration: 300, easing: 'easeInQuad' });
         }
 
         function closeIframe() {
