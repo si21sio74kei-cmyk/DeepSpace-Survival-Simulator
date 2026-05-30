@@ -304,17 +304,17 @@ def simulation_tick():
         food_hours   = s["food"]   / food_rate
         water_hours  = s["water"]  / water_net_rate
         energy_hours = s["energy"] / energy_net_rate
-
+        
         # 耦合修正：能源耗尽 → 电解停止 → O₂ 消耗加速
         if energy_hours < o2_hours and s["energy"] > 0.0:
-            o2_at_energy_zero = s["oxygen"] - o2_consumption * energy_hours
+            o2_at_energy_zero = s["oxygen"] - o2_net_rate * energy_hours  # 换成了净消耗率
             o2_hours = energy_hours + max(
                 0.0, o2_at_energy_zero / max(EPS, o2_consumption)
             )
 
         # 耦合修正：水耗尽 → 电解停止 → O₂ 同步恶化
         if water_hours < o2_hours and s["water"] > 0.0:
-            o2_after_water = s["oxygen"] - o2_consumption * water_hours
+            o2_after_water = s["oxygen"] - o2_net_rate * water_hours  # 换成了净消耗率
             o2_hours = water_hours + max(
                 0.0, o2_after_water / max(EPS, o2_consumption)
             )

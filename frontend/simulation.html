@@ -972,8 +972,8 @@ function runSim(initParams, modeName, totalDays, stochastic){
     const wnr  = Math.max(EPS, netW);
     const enr  = Math.max(EPS, eCon - solar);
     let oh = s.oxygen/o2nr, fh = s.food/fnr, wh = s.water/wnr, eh = s.energy/enr;
-    if (eh < oh && s.energy > 0){ const oz=s.oxygen-o2Con*eh; oh=eh+Math.max(0,oz/Math.max(EPS,o2Con)); }
-    if (wh < oh && s.water  > 0){ const ow=s.oxygen-o2Con*wh; oh=wh+Math.max(0,ow/Math.max(EPS,o2Con)); }
+    if (eh < oh && s.energy > 0){ const oz=s.oxygen-o2nr*eh; oh=eh+Math.max(0,oz/Math.max(EPS,o2Con)); }
+    if (wh < oh && s.water  > 0){ const ow=s.oxygen-o2nr*wh; oh=wh+Math.max(0,ow/Math.max(EPS,o2Con)); }
     s.survivalPrediction = Math.max(0, Math.min(oh,fh,wh,eh)/24.0);
 
     // Failure
