@@ -737,6 +737,9 @@ function initLiveCharts(){
        borderWidth:2,pointRadius:0,fill:true,tension:.4}
     ]}
   });
+  // 🆕 注入待机状态的基准静默线 (T0 时刻)
+  const initPt = { day: 0, hour: 0, oxygen: 100, food: 100, water: 100, energy: 100, health: 100, stability: 100, radiation: 10, temperature: 22, survivalPrediction: 365 };
+  pushLiveCharts(initPt);
 }
 
 function refreshLiveChartLabels(){

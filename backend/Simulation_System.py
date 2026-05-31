@@ -129,11 +129,17 @@ def simulation_tick():
         # ─────────────────────────────────────────────────
         if 6 <= hour <= 22:
             activity = mode["activity"]
-            phase    = "DAY"
+            phase = "DAY"
         else:
             activity = mode["activity"] * 0.40
-            phase    = "NIGHT"
+            phase = "NIGHT"
         s["activityFactor"] = round(activity, 3)
+
+        # 🆕 新增：舱内温度微小动态波动（白噪声 + 昼夜温差模拟）
+        base_t = s.get("initTemperature", 22.0)
+        target_t = base_t + (0.6 if phase == "DAY" else -0.4) # 白天略热，夜晚略冷
+        # 向目标温度平滑逼近，并加入微小随机白噪声扰动 (±0.15度)
+        s["temperature"] = round(s["temperature"] + (target_t - s["temperature"]) * 0.15 + random.uniform(-0.15, 0.15), 2)
 
         # ─────────────────────────────────────────────────
         # 建议三：设备老化衰减 Equipment Degradation
@@ -250,16 +256,16 @@ def simulation_tick():
         if s["water"]  < 20.0:  s["health"] = max(0.0, s["health"] - 0.15)
         
         # 🆕 工程级修正：引入高能粒子指数级物理耗散模型 (Exponential Decay)
+        # 🔴 修复：指数级衰减模型 + 宇宙射线背景微扰
         if not s["solarStormActive"]:
-            if s["radiation"] > s["initRadiation"]:
-                # 如果有电，通风/磁场净化效率高 (每小时清除 15% 游离辐射)；如果断电，自然衰减极慢 (5%)
+            # 如果辐射值明显高于基准值，处于风暴后的清洗衰减期
+            if s["radiation"] > s["initRadiation"] + 0.5:
                 decay_rate = 0.85 if s["energy"] > 20.0 else 0.95
-                
-                # 指数衰减公式：当前多余辐射 * 衰减率 + 基础背景辐射
                 excess_rad = s["radiation"] - s["initRadiation"]
                 s["radiation"] = round((excess_rad * decay_rate) + s["initRadiation"], 2)
             else:
-                s["radiation"] = s["initRadiation"]
+                # 处于平静期：在基准值附近产生真实的物理宇宙微小白噪声波动 (-0.1 到 +0.25)
+                s["radiation"] = round(s["initRadiation"] + random.uniform(-0.1, 0.25), 2)
 
         # ─────────────────────────────────────────────────
         # 建议六：AI 差异化自动调度
@@ -506,6 +512,11 @@ def api_reset():
 # 🆕 新增：地面站上行控制链路 (Uplink Command)
 @app.route('/api/sim/command', methods=['POST'])
 def api_command():
+    # 🛡️ 安全修复：核心执行器增加极简 API_KEY 鉴权
+    auth_header = request.headers.get('X-Mission-Control-Key')
+    if auth_header != "MACAO_SPACE_2026":
+        return jsonify({"success": False, "message": "🚨 未经授权的控制指令拦截"}), 401
+
     data = request.get_json() or {}
     cmd = data.get('command')
 
@@ -533,4 +544,11 @@ def api_command():
     return jsonify({"success": True})
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    # 1. host='0.0.0.0' 允许公网/外网访问（核心修复！）
+    # 2. 生产环境建议关闭 debug 和 reloader，防止线程重复启动
+    app.run(
+        host='0.0.0.0', 
+        port=5000, 
+        debug=False, 
+        use_reloader=False
+    )

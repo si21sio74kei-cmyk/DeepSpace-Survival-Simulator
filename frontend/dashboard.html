@@ -76,14 +76,30 @@
                     <button class="btn text-[var(--good)] border-[var(--good)]" onclick="startSim()">▶ 啟動推演矩陣</button>
                     <button class="btn text-[var(--warn)] border-[var(--warn)]" onclick="pauseSim()">⏸ 暫停 / 繼續</button>
                     <button class="btn text-[var(--danger)] border-[var(--danger)]" onclick="resetSim()">■ 中止重置</button>
-                    <!-- 方案C：一键快照同步按钮 -->
+                    <!-- 方案C：统一风格的同步按钮 -->
                     <button id="btn-sync-snapshot" onclick="syncFromMaster()" style="
-                        background: linear-gradient(45deg, #ff8c00, #ff0000); 
-                        color: white; border: none; padding: 10px 20px; border-radius: 5px; 
-                        cursor: pointer; font-weight: bold; margin-left: 10px; box-shadow: 0 0 10px #ff8c00;">
+                        background: linear-gradient(135deg, #ff8c00, #ff0000); 
+                        color: #fff; 
+                        border: 1px solid rgba(255, 140, 0, 0.5); 
+                        padding: 10px 24px; 
+                        border-radius: 4px; 
+                        cursor: pointer; 
+                        font-weight: bold; 
+                        margin-left: 15px; 
+                        box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); 
+                        text-transform: uppercase; 
+                        letter-spacing: 1px;
+                        transition: all 0.3s ease;">
                         📥 從主引擎(5000)同步殘局
                     </button>
-                    <span id="sync-status-text" style="margin-left: 15px; color: #888; font-size: 14px; font-weight: bold;"></span>
+                    <span id="sync-status-text" style="
+                        margin-left: 15px; 
+                        color: #00ffcc; 
+                        font-size: 14px; 
+                        font-weight: bold;
+                        min-width: 300px;
+                        display: inline-block;
+                        text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);"></span>
                 </div>
             </div>
         </div>
@@ -267,28 +283,19 @@ async function syncFromMaster() {
 
     try {
         // 1. 跨域抓取 5000 主引擎的实时战报
-        const masterResponse = await fetch('http://127.0.0.1:5000/api/sim/status');
+        const masterUrl = `${window.location.protocol}//${window.location.hostname}:5000/api/sim/status`;
+        const masterResponse = await fetch(masterUrl);
         if (!masterResponse.ok) throw new Error('主引擎無響應，請確保 5000 端口已啟動');
         
         const masterData = await masterResponse.json();
         statusText.innerText = `✅ 抓取成功！當前 O₂: ${masterData.oxygen.toFixed(1)}% | 能源: ${masterData.energy.toFixed(1)}%`;
 
         // 2. 将战报“注入”到 5002 影子引擎
-        const injectResponse = await fetch('http://127.0.0.1:5002/api/dash/inject_snapshot', {
+        // 2. 💡 修复：无需挑三拣四，直接将主引擎的 100% 完整物理快照无损注入影子引擎
+        const injectResponse = await fetch('/api/dash/inject_snapshot', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                missionTime: masterData.missionTime || 0,
-                oxygen: masterData.oxygen,
-                food: masterData.food,
-                water: masterData.water,
-                energy: masterData.energy,
-                radiation: masterData.radiation,
-                health: masterData.health,
-                temperature: masterData.temperature,
-                aiMode: masterData.aiMode,
-                crewCount: masterData.crewCount
-            })
+            body: JSON.stringify(masterData)
         });
 
         if (injectResponse.ok) {

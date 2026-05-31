@@ -125,7 +125,18 @@ def get_space_body():
 @app.route('/api/space/weather', methods=['GET'])
 def get_weather():
     try:
-        province, city = request.args.get('province', '澳门'), request.args.get('city', '澳门')
+        # 🛡️ 安全修复：SSRF 白名单防御，严格限制可查询的城市字典
+        ALLOWED_CITIES = {
+            "澳门": "澳门", "香港": "香港", "广州": "广东", 
+            "深圳": "广东", "北京": "北京", "上海": "上海"
+        }
+        req_city = request.args.get('city', '澳门')
+        if req_city not in ALLOWED_CITIES:
+            return jsonify({'error': '非法或未授权的城市参数 (Security Blocked)'}), 403
+            
+        province = ALLOWED_CITIES[req_city]
+        city = req_city
+        
         url = f'https://wis.qq.com/weather/common?source=pc&weather_type=observe%7Cforecast_24h%7Cair&province={province}&city={city}'
         data = requests.get(url, timeout=5).json()
         if not data or data.get('status') != 200 or not data.get('data'):
@@ -190,4 +201,4 @@ def get_solar_storm():
              'note': '【警告】：深空監測網通聯遭遇干擾，正在嘗試重新連接...'
         }), 200
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)

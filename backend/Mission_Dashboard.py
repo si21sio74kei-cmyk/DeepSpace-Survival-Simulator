@@ -75,6 +75,12 @@ def simulation_tick():
             phase = "NIGHT"
         s["activityFactor"] = round(activity, 3)
 
+        # 🆕 新增：舱内温度微小动态波动（白噪声 + 昼夜温差模拟）
+        base_t = s.get("initTemperature", 22.0)
+        target_t = base_t + (0.6 if phase == "DAY" else -0.4) # 白天略热，夜晚略冷
+        # 向目标温度平滑逼近，并加入微小随机白噪声扰动 (±0.15度)
+        s["temperature"] = round(s["temperature"] + (target_t - s["temperature"]) * 0.15 + random.uniform(-0.15, 0.15), 2)
+
         # 2. 設備老化
         equip_eff = max(0.50, 1.0 - (days_elapsed / 365.0) * 0.20)
         s["equipmentEfficiency"] = round(equip_eff, 3)
@@ -149,13 +155,16 @@ def simulation_tick():
         if s["oxygen"] < 30.0: s["health"] = max(0.0, s["health"] - 0.30)
         if s["water"] < 20.0: s["health"] = max(0.0, s["health"] - 0.15)
         
+        # 🔴 修复：指数级衰减模型 + 宇宙射线背景微扰
         if not s["solarStormActive"]:
-            if s["radiation"] > s["initRadiation"]:
+            # 如果辐射值明显高于基准值，处于风暴后的清洗衰减期
+            if s["radiation"] > s["initRadiation"] + 0.5:
                 decay_rate = 0.85 if s["energy"] > 20.0 else 0.95
                 excess_rad = s["radiation"] - s["initRadiation"]
                 s["radiation"] = round((excess_rad * decay_rate) + s["initRadiation"], 2)
             else:
-                s["radiation"] = s["initRadiation"]
+                # 处于平静期：在基准值附近产生真实的物理宇宙微小白噪声波动 (-0.1 到 +0.25)
+                s["radiation"] = round(s["initRadiation"] + random.uniform(-0.1, 0.25), 2)
 
         # 5. AI 自動化調度干預
         emergency = False
@@ -189,18 +198,21 @@ def simulation_tick():
         w_h = s["water"] / w_net
         e_h = s["energy"] / e_net
         
-                # 雙階段耦合修正：獨立計算並取最小值，防止相互覆蓋
+        # 雙階段耦合修正：獨立計算並取最小值，防止相互覆蓋
         o_h_final = o_h
+        
+        # 💡 修复：对齐断电极限降级代谢率
+        emergency_o2_con = s["crewCount"] * 0.40 * 0.03
         
         # 修正 1：能源耗盡 → 再生停止 → 氧氣全速下墜
         if e_h < o_h and s["energy"] > 0.0:
             o2_at_energy_zero = s["oxygen"] - o2_net * e_h
-            o_h_final = min(o_h_final, e_h + max(0.0, o2_at_energy_zero / max(EPS, o2_con)))
+            o_h_final = min(o_h_final, e_h + max(0.0, o2_at_energy_zero / max(EPS, emergency_o2_con)))
 
         # 修正 2：水資源耗盡 → 再生停止 → 氧氣全速下墜
         if w_h < o_h and s["water"] > 0.0:
             o2_after_water = s["oxygen"] - o2_net * w_h
-            o_h_final = min(o_h_final, w_h + max(0.0, o2_after_water / max(EPS, o2_con)))
+            o_h_final = min(o_h_final, w_h + max(0.0, o2_after_water / max(EPS, emergency_o2_con)))
             
         o_h = o_h_final
             
@@ -270,9 +282,15 @@ def api_pause():
     with sim_lock:
         sim_state['paused'] = not sim_state.get('paused', False)
         return jsonify({"paused": sim_state['paused']})
+
 @app.route('/api/dash/inject_snapshot', methods=['POST'])
 def inject_snapshot():
     """接收前端注入的 5000 主引擎快照，并重置 5002 的影子引擎"""
+    # 🛡️ 安全修复：数字孪生注入通道增加鉴权
+    auth_header = request.headers.get('X-Mission-Control-Key')
+    if auth_header != "MACAO_SPACE_2026":
+        return jsonify({"success": False, "message": "🚨 拒绝恶意的残局注入"}), 401
+
     global sim_thread
     data = request.get_json() or {}
     
@@ -288,21 +306,20 @@ def inject_snapshot():
         sim_state.update(copy.deepcopy(DEFAULT_STATE))
         
         # 注入核心资源数据 (从 5000 搬运过来的家底)
-        sim_state["missionTime"] = int(data.get("missionTime", 0))
-        sim_state["missionDay"] = sim_state["missionTime"] // 24
-        sim_state["oxygen"] = float(data.get("oxygen", 100.0))
-        sim_state["food"] = float(data.get("food", 100.0))
-        sim_state["water"] = float(data.get("water", 100.0))
-        sim_state["energy"] = float(data.get("energy", 100.0))
-        sim_state["radiation"] = float(data.get("radiation", 10.0))
-        sim_state["health"] = float(data.get("health", 100.0))
-        sim_state["temperature"] = float(data.get("temperature", 22.0))
-        sim_state["aiMode"] = data.get("aiMode", "Normal")
-        sim_state["crewCount"] = int(data.get("crewCount", 4))
+        # 💡 修复：循环遍历接收所有核心物理法则上下文，防止影子引擎“失忆”
+        # 💡 修复：将基准线变量也加入同步名单，彻底防止风暴快照导致基准线永久偏移
+        core_keys = [
+            "missionTime", "missionDay", "crewCount", "oxygen", "food", 
+            "water", "energy", "radiation", "temperature", "health", 
+            "stability", "survivalPrediction", "aiMode", "solarStormProbability", 
+            "solarStormActive", "equipmentEfficiency", "activityFactor", "emergencyMode",
+            "initRadiation", "initTemperature"
+        ]
+        for k in core_keys:
+            if k in data:
+                sim_state[k] = data[k]
         
-        # 记录初始辐射和温度，用于后续的衰减计算
-        sim_state["initRadiation"] = sim_state["radiation"]
-        sim_state["initTemperature"] = sim_state["temperature"]
+        # (删除了原来那两行错误的覆盖赋值)
         
         # 3. 初始化历史记录，让图表从当前残局时刻开始画起（无缝衔接）
         sim_state["history"] = [{
@@ -331,4 +348,4 @@ def sim_loop():
         simulation_tick()
         stop_event.wait(tick_interval) # 完美替代 sleep，收到停止信號可瞬間打斷
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5002, debug=True)
+    app.run(host='0.0.0.0', port=5002, debug=False, use_reloader=False)
