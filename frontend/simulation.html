@@ -831,7 +831,6 @@ function updateCmpCharts(results){
 
 function updateCmpTable(results){
   const sorted = [...results].sort((a,b)=>{
-    // 💡 修复：按照“实际存活的物理天数(数组长度)”来排名，而不是死后的剩余寿命(0)
     return b.history.length - a.history.length;
   });
   const medals = ['🥇','🥈','🥉'];
@@ -845,12 +844,14 @@ function updateCmpTable(results){
 
   sorted.forEach((r,i)=>{
     const last   = r.history.slice(-1)[0] || {};
-    // 💡 修复：表格直接显示该策略实际坚持了多少天
-    const sv     = (r.history.length).toFixed(1);
+    const sv     = (r.history.length / 24).toFixed(1); 
     const color  = MODE_COLORS[r.mode];
     const medal  = medals[i] || `${i+1}`;
-    const stc    = r.survived ? 'var(--good)' : 'var(--danger)';
-    const sttxt  = r.survived ? T('tr_survived') : T('tr_failed');
+    
+    // 智能状态判定：如果最后一天健康值大于 0，说明等到了救援！
+    const isSaved = (last.health > 0);
+    const stc    = isSaved ? '#00ff88' : '#ff3355';
+    const sttxt  = isSaved ? '✅ 救援成功' : '💀 絕境覆滅';
 
     function cc(v, inv=false){
       const e = inv?100-v:v;
@@ -860,12 +861,12 @@ function updateCmpTable(results){
     h += `<tr>
       <td style="text-align:center;font-size:15px;">${medal}</td>
       <td><span style="color:${color};font-weight:bold;text-shadow:0 0 8px ${color};">${r.mode}</span></td>
-      <td style="color:${cc(parseFloat(sv))};font-size:14px;font-weight:bold;">${sv}</td>
+      <td style="color:${isSaved ? '#00ff88' : '#fff'};font-size:14px;font-weight:bold;">${sv}</td>
       <td style="color:${cc(last.oxygen??0)};">${(last.oxygen??0).toFixed(1)}</td>
       <td style="color:${cc(last.food??0)};">${(last.food??0).toFixed(1)}</td>
       <td style="color:${cc(last.water??0)};">${(last.water??0).toFixed(1)}</td>
       <td style="color:${cc(last.energy??0)};">${(last.energy??0).toFixed(1)}</td>
-      <td style="color:${cc(last.health??0)};">${(last.health??0).toFixed(1)}</td>
+      <td style="color:${isSaved ? '#00ff88' : '#ff3355'};">${(last.health??0).toFixed(1)}</td>
       <td style="color:${stc};font-weight:bold;">${sttxt}</td>
     </tr>`;
   });
@@ -873,7 +874,6 @@ function updateCmpTable(results){
   h += '</tbody></table>';
   document.getElementById('cmp-tbl-wrap').innerHTML = h;
 }
-
 // ============================================================
 // JS Simulation Engine (client-side, for compare mode)
 // ============================================================
@@ -905,7 +905,6 @@ function runSim(initParams, modeName, totalDays, stochastic){
     const day  = Math.floor(tick / 24);
     const eff  = Math.max(0.5, 1.0 - (day / 365.0) * 0.20);
 
-    // Solar storm
     if (stochastic){
       if (!s.solarActive && Math.random() < stormP)
         { s.solarActive = true; s.radiation = Math.min(100, s.radiation + 20); }
@@ -914,11 +913,9 @@ function runSim(initParams, modeName, totalDays, stochastic){
       if (s.solarActive) s.radiation = Math.min(100, s.radiation + 0.8);
     }
 
-    // Circadian rhythm (Suggestion 1)
     const isDay  = hour >= 6 && hour < 22;
     const activ  = isDay ? mode.activity : mode.activity * 0.40;
 
-    // O2 consumption + electrolysis regen (Suggestions 2, 4)
     const radFac = 1.0 + (s.radiation / 100.0) * 0.30;
     const o2Con  = crew * activ * radFac * 0.03;
     const rEff   = mode.regen_boost * eff;
@@ -932,18 +929,15 @@ function runSim(initParams, modeName, totalDays, stochastic){
     }
     s.oxygen = Math.max(0, Math.min(100, s.oxygen - o2Con + o2Gen));
 
-    // Food
     const hf   = s.health >= 50 ? 1.0 : s.health / 50.0;
     const fCon = crew * activ * mode.ration * 0.02 * hf;
     s.food = Math.max(0, s.food - fCon);
 
-    // Water
     const wCon = crew * activ * 0.025;
-    const wRec = crew * 0.008 * eff;            // Suggestion 2: water recycling
+    const wRec = crew * 0.008 * eff;            
     const netW = wCon - wRec + wElec;
     s.water = Math.max(0, Math.min(100, s.water - netW));
 
-    // Energy + solar (Suggestions 2, 3)
     const sysL  = 1.0 - mode.energy_save;
     const tmpC  = Math.abs(s.temperature - 22.0) * 0.02;
     let eCon    = sysL * 0.05 + s.radiation * 0.01 + tmpC * 0.03;
@@ -953,7 +947,6 @@ function runSim(initParams, modeName, totalDays, stochastic){
       solar = 0.08 * Math.sin(Math.PI * (hour - 8.0) / 10.0) * eff;
     s.energy = Math.max(0, Math.min(100, s.energy - eCon + solar));
 
-    // Health (Suggestion 4: coupled damage)
     const shEff  = 0.50 * eff * (mode.shield ? 1.5 : 1.0);
     let radDmg   = s.radiation * 0.001;
     if (s.energy > 30) radDmg *= shEff;
@@ -962,20 +955,16 @@ function runSim(initParams, modeName, totalDays, stochastic){
     if (s.oxygen < 30) s.health = Math.max(0, s.health - 0.30);
     if (s.water  < 20) s.health = Math.max(0, s.health - 0.15);
 
-    // Rad decay
     if (!s.solarActive) s.radiation = Math.max(initRad, s.radiation - 0.30);
 
-    // AI auto-intervention
     if (s.energy < 40.0){
       const boost = 1.5 * mode.energy_save;
       s.energy = Math.min(100, s.energy + boost);
     }
 
-    // Stability
     s.stability = Math.max(0, Math.min(100,
       (s.oxygen+s.food+s.water+s.energy+s.health)/5.0 - (s.radiation/100.0)*20.0));
 
-    // Survival prediction (Suggestion 7: coupling correction)
     const EPS  = 1e-4;
     const o2nr = Math.max(EPS, o2Con - o2Gen);
     const fnr  = Math.max(EPS, fCon);
@@ -986,6 +975,11 @@ function runSim(initParams, modeName, totalDays, stochastic){
     if (wh < oh && s.water  > 0){ const ow=s.oxygen-o2nr*wh; oh=wh+Math.max(0,ow/Math.max(EPS,o2Con)); }
     s.survivalPrediction = Math.max(0, Math.min(oh,fh,wh,eh)/24.0);
 
+    // 🆕 注入胜利条件：撑到第 100 天，地球救援舰队成功对接！
+    if (day >= 100) {
+      break; 
+    }
+
     // Failure
     if (s.oxygen<=0||s.health<=0||s.food<=0||s.water<=0){
       failed = true;
@@ -993,7 +987,7 @@ function runSim(initParams, modeName, totalDays, stochastic){
         health:0,stability:0,radiation:s.radiation,survivalPrediction:0});
       break;
     }
-    // Daily snapshot
+    
     if (hour === 23){
       history.push({
         day:day+1, oxygen:+s.oxygen.toFixed(2), food:+s.food.toFixed(2),
