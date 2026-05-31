@@ -77,29 +77,14 @@
                     <button class="btn text-[var(--warn)] border-[var(--warn)]" onclick="pauseSim()">⏸ 暫停 / 繼續</button>
                     <button class="btn text-[var(--danger)] border-[var(--danger)]" onclick="resetSim()">■ 中止重置</button>
                     <!-- 方案C：统一风格的同步按钮 -->
-                    <button id="btn-sync-snapshot" onclick="syncFromMaster()" style="
-                        background: linear-gradient(135deg, #ff8c00, #ff0000); 
-                        color: #fff; 
-                        border: 1px solid rgba(255, 140, 0, 0.5); 
-                        padding: 10px 24px; 
-                        border-radius: 4px; 
-                        cursor: pointer; 
-                        font-weight: bold; 
-                        margin-left: 15px; 
-                        box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); 
-                        text-transform: uppercase; 
-                        letter-spacing: 1px;
-                        transition: all 0.3s ease;">
-                        📥 從主引擎(5000)同步殘局
-                    </button>
-                    <span id="sync-status-text" style="
-                        margin-left: 15px; 
-                        color: #00ffcc; 
-                        font-size: 14px; 
-                        font-weight: bold;
-                        min-width: 300px;
-                        display: inline-block;
-                        text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);"></span>
+                     <button class="btn text-[var(--danger)] border-[var(--danger)]" onclick="resetSim()">■ 中止重置</button>
+                    
+                    <div style="border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px;">
+                        <button id="btn-sync-snapshot" class="btn text-[#ff8800] border-[#ff8800]" style="box-shadow: inset 0 0 10px rgba(255,136,0,0.15);" onclick="syncFromMaster()">
+                            📥 從主引擎(5000)同步殘局
+                        </button>
+                        <div id="sync-status-text" class="text-[10px] font-mono tracking-widest text-center mt-2 h-4"></div>
+                    </div>
                 </div>
             </div>
         </div>
