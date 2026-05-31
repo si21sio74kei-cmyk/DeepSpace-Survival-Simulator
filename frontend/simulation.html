@@ -1037,9 +1037,8 @@ function runComparison(){
 // ============================================================
 // ── LIVE API ──
 // ============================================================
-const API = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
-    ? 'http://127.0.0.1:5000/api/sim' 
-    : '/api/sim';
+// 💡 终极修复：跨终端局域网演示动态 IP 绑定 (主引擎 5000)
+const API = `http://${window.location.hostname}:5000/api/sim`;
 let pollTimer = null, lastTick = -1, curStatus = 'standby';
 
 function setHdrStatus(key, cls, border){
