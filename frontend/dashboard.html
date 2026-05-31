@@ -76,6 +76,14 @@
                     <button class="btn text-[var(--good)] border-[var(--good)]" onclick="startSim()">▶ 啟動推演矩陣</button>
                     <button class="btn text-[var(--warn)] border-[var(--warn)]" onclick="pauseSim()">⏸ 暫停 / 繼續</button>
                     <button class="btn text-[var(--danger)] border-[var(--danger)]" onclick="resetSim()">■ 中止重置</button>
+                    <!-- 方案C：一键快照同步按钮 -->
+                    <button id="btn-sync-snapshot" onclick="syncFromMaster()" style="
+                        background: linear-gradient(45deg, #ff8c00, #ff0000); 
+                        color: white; border: none; padding: 10px 20px; border-radius: 5px; 
+                        cursor: pointer; font-weight: bold; margin-left: 10px; box-shadow: 0 0 10px #ff8c00;">
+                        📥 從主引擎(5000)同步殘局
+                    </button>
+                    <span id="sync-status-text" style="margin-left: 15px; color: #888; font-size: 14px; font-weight: bold;"></span>
                 </div>
             </div>
         </div>
@@ -246,6 +254,64 @@
         }
 
         window.addEventListener('DOMContentLoaded', initChart);
+// ================================================================
+// 方案 C 核心：前端一键快照同步 (State Snapshot Injection)
+// ================================================================
+async function syncFromMaster() {
+    const btn = document.getElementById('btn-sync-snapshot');
+    const statusText = document.getElementById('sync-status-text');
+    
+    btn.disabled = true;
+    statusText.style.color = '#ff0';
+    statusText.innerText = '⏳ 正在連接前線主引擎 (Port 5000)...';
+
+    try {
+        // 1. 跨域抓取 5000 主引擎的实时战报
+        const masterResponse = await fetch('http://127.0.0.1:5000/api/sim/status');
+        if (!masterResponse.ok) throw new Error('主引擎無響應，請確保 5000 端口已啟動');
+        
+        const masterData = await masterResponse.json();
+        statusText.innerText = `✅ 抓取成功！當前 O₂: ${masterData.oxygen.toFixed(1)}% | 能源: ${masterData.energy.toFixed(1)}%`;
+
+        // 2. 将战报“注入”到 5002 影子引擎
+        const injectResponse = await fetch('http://127.0.0.1:5002/api/dash/inject_snapshot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                missionTime: masterData.missionTime || 0,
+                oxygen: masterData.oxygen,
+                food: masterData.food,
+                water: masterData.water,
+                energy: masterData.energy,
+                radiation: masterData.radiation,
+                health: masterData.health,
+                temperature: masterData.temperature,
+                aiMode: masterData.aiMode,
+                crewCount: masterData.crewCount
+            })
+        });
+
+        if (injectResponse.ok) {
+            statusText.style.color = '#0f0';
+            statusText.innerText = '🚀 殘局同步完畢！影子引擎已接管，準備開始極限預測...';
+            
+            // 3. 自动触发 5002 的 UI 刷新，让图表立刻显示注入的初始点
+            if (typeof updateDashboard === 'function') {
+                updateDashboard(); // 如果您有定时刷新函数，可以调用它
+            } else {
+                // 如果没有，直接模拟点击一次“启动”按钮，让 5002 基于残局开始跑
+                const startBtn = document.getElementById('btn-start') || document.querySelector('button[onclick*="start"]');
+                if(startBtn) startBtn.click();
+            }
+        }
+
+    } catch (error) {
+        statusText.style.color = '#f00';
+        statusText.innerText = `❌ 同步失敗: ${error.message}`;
+    } finally {
+        btn.disabled = false;
+    }
+}
     </script>
 </body>
 </html>

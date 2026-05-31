@@ -270,6 +270,52 @@ def api_pause():
     with sim_lock:
         sim_state['paused'] = not sim_state.get('paused', False)
         return jsonify({"paused": sim_state['paused']})
+@app.route('/api/dash/inject_snapshot', methods=['POST'])
+def inject_snapshot():
+    """接收前端注入的 5000 主引擎快照，并重置 5002 的影子引擎"""
+    global sim_thread
+    data = request.get_json() or {}
+    
+    # 1. 停止当前可能正在运行的 5002 推演
+    stop_event.set()
+    if sim_thread and sim_thread.is_alive():
+        sim_thread.join(timeout=1.5)
+    stop_event.clear()
+    
+    with sim_lock:
+        # 2. 重置为默认状态，然后注入 5000 的残局数据
+        sim_state.clear()
+        sim_state.update(copy.deepcopy(DEFAULT_STATE))
+        
+        # 注入核心资源数据 (从 5000 搬运过来的家底)
+        sim_state["missionTime"] = int(data.get("missionTime", 0))
+        sim_state["missionDay"] = sim_state["missionTime"] // 24
+        sim_state["oxygen"] = float(data.get("oxygen", 100.0))
+        sim_state["food"] = float(data.get("food", 100.0))
+        sim_state["water"] = float(data.get("water", 100.0))
+        sim_state["energy"] = float(data.get("energy", 100.0))
+        sim_state["radiation"] = float(data.get("radiation", 10.0))
+        sim_state["health"] = float(data.get("health", 100.0))
+        sim_state["temperature"] = float(data.get("temperature", 22.0))
+        sim_state["aiMode"] = data.get("aiMode", "Normal")
+        sim_state["crewCount"] = int(data.get("crewCount", 4))
+        
+        # 记录初始辐射和温度，用于后续的衰减计算
+        sim_state["initRadiation"] = sim_state["radiation"]
+        sim_state["initTemperature"] = sim_state["temperature"]
+        
+        # 3. 初始化历史记录，让图表从当前残局时刻开始画起（无缝衔接）
+        sim_state["history"] = [{
+            "tick": sim_state["missionTime"],
+            "day": sim_state["missionDay"],
+            "hour": sim_state["missionTime"] % 24,
+            "oxygen": sim_state["oxygen"], "food": sim_state["food"],
+            "water": sim_state["water"], "energy": sim_state["energy"],
+            "health": sim_state["health"], "stability": sim_state["stability"],
+            "survivalPrediction": sim_state["survivalPrediction"]
+        }]
+        
+    return jsonify({"success": True, "message": "快照注入成功，影子引擎已就绪"})
 @app.route('/api/dash/reset', methods=['POST'])
 def api_reset():
     stop_event.set()
