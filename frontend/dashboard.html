@@ -45,7 +45,7 @@
         <div class="flex items-center space-x-3">
             <span class="text-sm font-bold tracking-[3px] text-white">📊 SPACE-SURVIVAL PREDICTION</span>
             <span class="text-xs text-gray-500">│</span>
-            <span class="text-xs text-[var(--dim)]">ENGINE RUNNING ON 127.0.0.1:5000 (SHARED)</span>
+            <span class="text-xs text-[var(--dim)]">PREDICTION ENGINE RUNNING ON 127.0.0.1:5002 (ISOLATED)</span>
         </div>
         <div id="sim-status" class="text-xs text-gray-500 font-bold border border-gray-600 px-2 py-1">■ STANDBY</div>
     </header>
@@ -124,9 +124,10 @@
 
     <script>
     // 【統一數據大腦】：強制連線至 Simulation System 的核心
+    // 🔴 修复：【獨立預測大腦】：強制連線至 5002 影子預測引擎
     const API = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
-        ? 'http://127.0.0.1:5000/api/sim' 
-        : '/api/sim';
+        ? 'http://127.0.0.1:5002/api/dash' 
+        : '/api/dash';
         let pollTimer = null;
         let simChart;
 

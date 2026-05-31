@@ -106,11 +106,23 @@ def simulation_tick():
         s = sim_state
         if not s["running"] or s["paused"]:
             return
-
-        mode = AI_MODES.get(s["aiMode"], AI_MODES["Normal"])
+        # 🆕 必须使用 .copy()，防止动态计算污染全局基准模板
+        mode = AI_MODES.get(s["aiMode"], AI_MODES["Normal"]).copy()
         hour         = s["missionTime"] % 24
         days_elapsed = s["missionTime"] / 24.0
         new_events   = []
+
+        # 🆕 帕累托多目标自适应算法注入 (仅在 Dynamic AI 模式下激活)
+        if s["aiMode"] == "Dynamic AI":
+            w_o2 = 12.0 if s["oxygen"] < 35.0 else 1.0
+            w_en = 10.0 if s["energy"] < 30.0 else 1.0
+            w_rad = 6.0 if s["radiation"] > 60.0 else 0.5
+
+            base_act = 0.85 - (w_o2 * 0.04) - (s["radiation"] * 0.002)
+            base_es  = 0.20 + (w_en * 0.05) + (s["radiation"] * 0.003)
+
+            mode["activity"] = max(0.35, min(1.20, base_act))
+            mode["energy_save"] = max(-0.10, min(0.60, base_es))
 
         # ─────────────────────────────────────────────────
         # 建议一：昼夜节律 Circadian Rhythm
@@ -236,11 +248,18 @@ def simulation_tick():
         if s["food"]   < 20.0:  s["health"] = max(0.0, s["health"] - 0.10)
         if s["oxygen"] < 30.0:  s["health"] = max(0.0, s["health"] - 0.30)
         if s["water"]  < 20.0:  s["health"] = max(0.0, s["health"] - 0.15)
-
-        # 辐射自然衰减（非风暴时）
+        
+        # 🆕 工程级修正：引入高能粒子指数级物理耗散模型 (Exponential Decay)
         if not s["solarStormActive"]:
-            s["radiation"] = max(s["initRadiation"],
-                                  round(s["radiation"] - 0.30, 2))
+            if s["radiation"] > s["initRadiation"]:
+                # 如果有电，通风/磁场净化效率高 (每小时清除 15% 游离辐射)；如果断电，自然衰减极慢 (5%)
+                decay_rate = 0.85 if s["energy"] > 20.0 else 0.95
+                
+                # 指数衰减公式：当前多余辐射 * 衰减率 + 基础背景辐射
+                excess_rad = s["radiation"] - s["initRadiation"]
+                s["radiation"] = round((excess_rad * decay_rate) + s["initRadiation"], 2)
+            else:
+                s["radiation"] = s["initRadiation"]
 
         # ─────────────────────────────────────────────────
         # 建议六：AI 差异化自动调度
@@ -264,7 +283,7 @@ def simulation_tick():
                 f"{s['activityFactor']:.2f}"))
 
         if s["radiation"] > 70.0:
-            health_boost = 0.50 * mode["energy_save"]
+            health_boost = 0.50 if mode["shield_priority"] else 0.10
             s["health"] = min(100.0, s["health"] + health_boost)
             new_events.append(("AI_DISPATCH",
                 f"🤖 [{s['aiMode']}] Radiation > 70 — shield boost "
@@ -305,19 +324,26 @@ def simulation_tick():
         water_hours  = s["water"]  / water_net_rate
         energy_hours = s["energy"] / energy_net_rate
         
-        # 耦合修正：能源耗尽 → 电解停止 → O₂ 消耗加速
+        # 🆕 工程级修正：引入断电/断水后的“极端降级代谢率”
+        emergency_o2_con = s["crewCount"] * 0.40 * 0.03 # 假设失去能源/水后，全员强制进入0.4极低代谢保命
+                # 耦合修正：独立计算能源和水耗尽后的O2剩余时间，取最小值
+        o2h_final = o2_hours
+        
+        # 修正1：能源耗尽 → 电解停止 → O₂ 消耗按照极端代谢率计算
         if energy_hours < o2_hours and s["energy"] > 0.0:
-            o2_at_energy_zero = s["oxygen"] - o2_net_rate * energy_hours  # 换成了净消耗率
-            o2_hours = energy_hours + max(
-                0.0, o2_at_energy_zero / max(EPS, o2_consumption)
-            )
+            o2_at_energy_zero = s["oxygen"] - o2_net_rate * energy_hours
+            o2h_final = min(o2h_final, energy_hours + max(
+                0.0, o2_at_energy_zero / max(EPS, emergency_o2_con)
+            ))
 
-        # 耦合修正：水耗尽 → 电解停止 → O₂ 同步恶化
+        # 修正2：水耗尽 → 电解停止 → O₂ 消耗按照极端代谢率计算
         if water_hours < o2_hours and s["water"] > 0.0:
-            o2_after_water = s["oxygen"] - o2_net_rate * water_hours  # 换成了净消耗率
-            o2_hours = water_hours + max(
-                0.0, o2_after_water / max(EPS, o2_consumption)
-            )
+            o2_after_water = s["oxygen"] - o2_net_rate * water_hours
+            o2h_final = min(o2h_final, water_hours + max(
+                0.0, o2_after_water / max(EPS, emergency_o2_con)
+            ))
+            
+        o2_hours = o2h_final
 
         s["survivalPrediction"] = max(0.0, round(
             min(o2_hours, food_hours, water_hours, energy_hours) / 24.0, 1
@@ -377,13 +403,10 @@ def simulation_tick():
                 "type": "MISSION_FAILED",
                 "description": f"💀 MISSION FAILED — {' | '.join(fails)}"
             })
-
-
 def sim_loop():
     while not stop_event.is_set():
         simulation_tick()
-        time.sleep(tick_interval)
-
+        stop_event.wait(tick_interval) # 完美替代 sleep，收到停止信號可瞬間打斷
 
 # ================================================================
 # Flask API
@@ -412,6 +435,8 @@ def api_start():
     tick_interval = 1.0 / speed
 
     with sim_lock:
+        sim_state.clear()
+        sim_state.update(copy.deepcopy(DEFAULT_STATE))
         sim_state.update({
             "running": True, "paused": False,
             "missionTime": 0, "missionDay": 0,
@@ -443,7 +468,8 @@ def api_start():
 def api_status():
     # 【解決 Vercel 時間凍結】：前端只要來請求狀態，雲端就強制推演 1 個 Tick (小時)！
     if sim_state.get("running") and not sim_state.get("paused"):
-        simulation_tick()
+        if not sim_thread or not sim_thread.is_alive():
+            simulation_tick()
 
     with sim_lock:
         result = {k: v for k, v in sim_state.items() if k != 'history'}
@@ -476,5 +502,35 @@ def api_reset():
         sim_state.clear()
         sim_state.update(new)
     return jsonify({"success": True})
+
+# 🆕 新增：地面站上行控制链路 (Uplink Command)
+@app.route('/api/sim/command', methods=['POST'])
+def api_command():
+    data = request.get_json() or {}
+    cmd = data.get('command')
+
+    with sim_lock:
+        s = sim_state
+        if not s["running"]:
+            return jsonify({"success": False, "message": "模拟未启动"}), 400
+
+        if cmd == "ACTIVATE_RAD_SHIELD":
+            s["energy"] = max(0.0, s["energy"] - 15.0) 
+            s["radiation"] = max(s["initRadiation"], s["radiation"] * 0.4) 
+            s["events"].append({
+                "tick": s["missionTime"], "type": "AI_DISPATCH",
+                "description": "📡 [地面上行指令] CMD: ACTIVATE_RAD_SHIELD 成功。磁盾全功率过载，强行削减辐射！"
+            })
+        elif cmd == "ENTER_SAFE_MODE":
+            s["aiMode"] = "Stealth Mode"
+            s["activityFactor"] = 0.60
+            s["events"].append({
+                "tick": s["missionTime"], "type": "AI_DISPATCH",
+                "description": "📡 [地面上行指令] CMD: ENTER_SAFE_MODE。主控被地面接管，强制切入低代谢隐蔽休眠！"
+            })
+        else:
+            return jsonify({"success": False, "message": "未知或非法指令"}), 400
+    return jsonify({"success": True})
+
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)

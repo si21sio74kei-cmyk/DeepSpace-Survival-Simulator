@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
+import math
 import os
 
 app = Flask(__name__)
@@ -10,13 +11,33 @@ CORS(app)
 # 你的專屬 NASA API KEY
 NASA_KEY = os.environ.get('NASA_API_KEY', '4lvYmjBb3NFCc4xpxVkrj7Ih4cWGWqbpkqUSkbaY')
 
-# [卡片 1] ISS 實時位置
+# 🆕 新增：大湾区/澳门地理测控距离解算器
+def calc_macao_distance(lat, lon):
+    macao_lat, macao_lon = 22.1989, 113.5491
+    r_lat1, r_lon1, r_lat2, r_lon2 = map(math.radians, [lat, lon, macao_lat, macao_lon])
+    a = math.sin((r_lat2 - r_lat1)/2)**2 + math.cos(r_lat1) * math.cos(r_lat2) * math.sin((r_lon2 - r_lon1)/2)**2
+    return round(2 * math.asin(math.sqrt(a)) * 6371.0, 1)
+
+# [卡片 1] ISS 實時位置 + 澳门 DSN 测控链路
 @app.route('/api/space/iss', methods=['GET'])
 def get_iss():
     try:
         response = requests.get('http://api.open-notify.org/iss-now.json', timeout=5)
-        response.raise_for_status()
-        return jsonify(response.json())
+        res_data = response.json()
+        lat = float(res_data["iss_position"]["latitude"])
+        lon = float(res_data["iss_position"]["longitude"])
+        dist = calc_macao_distance(lat, lon)
+        in_window = dist < 1500.0 
+
+        return jsonify({
+            "iss_position": {"latitude": lat, "longitude": lon},
+            "timestamp": res_data["timestamp"],
+            "macao_dsn": {
+                "distance_km": dist,
+                "status": "LOCKED (锁定过境视窗)" if in_window else "BELOW_HORIZON (地平线下)",
+                "alarm": in_window
+            }
+        })
     except Exception as e:
         return jsonify({'error': '無法獲取 ISS 數據'}), 500
 
@@ -39,7 +60,6 @@ def get_spacex():
         })
     except Exception as e:
         return jsonify({'error': '無法獲取 SpaceX 數據'}), 500
-
 # [卡片 3] 🪐 宇宙天體觀測 (支援地球/火星/月球)
 @app.route('/api/space/space-body', methods=['GET'])
 def get_space_body():
@@ -70,7 +90,8 @@ def get_space_body():
                         'imageUrl': pic.get('img_src', '').replace('http://', 'https://')
                     })
                 raise Exception("Mars photos empty")
-            except:
+            except Exception as e:
+                print(f"Mars Fetch Error: {e}") # 🟠 修复：捕获具体异常
                 return jsonify({
                     'date': '2026-05-28 MATRIX REF',
                     'caption': '☄️ 火星地表探測矩陣（即時備用通聯解算）。觀測載荷：Mast Camera ─ 高清紅色荒漠',
@@ -86,19 +107,20 @@ def get_space_body():
                     'caption': f"月球物理母體指標 ─ 重力: {data.get('gravity', 1.62)} m/s² │ 半徑: {data.get('meanRadius', 1737.4)} km │ 密度: {data.get('density', 3.34)} g/cm³",
                     'imageUrl': 'https://images.unsplash.com/photo-1522030299830-16b8d3d049fe?w=800'
                 })
-            except:
+            except Exception as e:
+                print(f"Moon Fetch Error: {e}") # 🟠 修复：捕获具体异常
                 return jsonify({
                     'date': 'LUNAR TELEMETRY CACHE',
                     'caption': "🌙 月球軌道物理指標（安全星曆解算）─ 表面重力: 1.62 m/s² │ 平均半徑: 1737.4 km",
                     'imageUrl': 'https://images.unsplash.com/photo-1522030299830-16b8d3d049fe?w=800'
                 })
-    except:
+    except Exception as e:
+        print(f"Space Body Main Error: {e}") # 🟠 修复：捕获具体异常
         return jsonify({
             'date': 'SYSTEM ERROR FALLBACK',
             'caption': '深空探測矩陣通信異常，切換至安全存檔視角。',
             'imageUrl': 'https://images.unsplash.com/photo-1614730321146-b6fa6a46bcb4?w=800'
         })
-
 # [卡片 4] 城市天氣
 @app.route('/api/space/weather', methods=['GET'])
 def get_weather():
@@ -115,7 +137,8 @@ def get_weather():
             'weather': w.get('weather', '未知'), 'wind_dir': w.get('wind_direction', '--'),
             'wind_power': w.get('wind_power', '0'), 'aqi': a.get('aqi', '--'), 'aqi_name': a.get('aqi_name', 'N/A')
         })
-    except:
+    except Exception as e:
+        print(f"Weather Fetch Error: {e}")  # 🟠 修复：捕获具体异常
         return jsonify({'error': '獲取氣象數據超時'}), 500
 # [卡片 5] NASA 太陽風暴 (CME) 代理 (真實抓取 + 滿級容錯防禦)
 @app.route('/api/space/solar-storm', methods=['GET'])

@@ -199,6 +199,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9000;
           </select>
           <div id="mode-desc" style="font-size:11px;color:rgba(0,212,255,.5);margin-top:4px;line-height:1.55;"></div>
         </div>
+        <div style="border-top:1px solid var(--border); padding-top:7px; margin-top:5px; background: rgba(255,51,85,0.04); border: 1px dashed rgba(255,51,85,0.3); padding:6px;">
+          <div class="hlabel" style="color:var(--danger); font-weight: bold;">📡 UPLINK COMMAND (地面覆盖指令)</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:4px;">
+            <button class="btn" style="border-color:var(--good); color:var(--good); font-size:10px; padding:4px;" onclick="sendCmd('ACTIVATE_RAD_SHIELD')">🛡️ 过载强磁盾</button>
+            <button class="btn" style="border-color:var(--warn); color:var(--warn); font-size:10px; padding:4px;" onclick="sendCmd('ENTER_SAFE_MODE')">🛌 强令休眠</button>
+          </div>
+        </div>
 
         <div style="display:flex;flex-direction:column;gap:5px;margin-top:auto;padding-top:8px;">
           <button class="btn btn-go"   id="btn-launch" onclick="startSim()">▶ 启动仿真</button>
@@ -1264,6 +1271,14 @@ function updateElog(events){
 initLiveCharts();
 buildModeCBs();
 applyLang();
+async function sendCmd(cmd) {
+  try {
+    await fetch(`${API}/command`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: cmd })
+    });
+  } catch(e) { console.error("指令发送失败"); }
+}
 updateModeDesc();
 </script>
 </body>

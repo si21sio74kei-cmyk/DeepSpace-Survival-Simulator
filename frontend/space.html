@@ -80,6 +80,10 @@
                             <p class="text-xs flex justify-between"><span class="c-lbl">LONGITUDE (經度):</span> <span id="iss-lon" class="text-white font-bold">--</span></p>
                         </div>
                         <p class="text-[11px] text-[var(--dim)] flex justify-between"><span>TIMESTAMP:</span> <span id="iss-time" class="c-warn">--</span></p>
+                        <div id="mo-panel" class="mt-2 p-2.5 border border-cyan-800 bg-cyan-950/20 space-y-1 text-xs transition-all duration-300">
+                            <p class="flex justify-between"><span class="text-cyan-400">📍 澳门路环测控站直线距离:</span> <span id="mo-dist" class="text-white font-bold">-- km</span></p>
+                            <p class="flex justify-between"><span class="text-cyan-400">📡 本地光学天线锁紧状态:</span> <span id="mo-link" class="text-gray-500">STANDBY</span></p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -241,8 +245,22 @@ async function fetchISS() {
         document.getElementById('iss-lat').innerText = parseFloat(data.iss_position.latitude).toFixed(4);
         document.getElementById('iss-lon').innerText = parseFloat(data.iss_position.longitude).toFixed(4);
         document.getElementById('iss-time').innerText = new Date(data.timestamp * 1000).toLocaleTimeString();
+
+        // 🆕 注入澳门测控站解算数据渲染
+        if (data.macao_dsn) {
+            document.getElementById('mo-dist').innerText = `${data.macao_dsn.distance_km} km`;
+            document.getElementById('mo-link').innerText = data.macao_dsn.status;
+            const moPanel = document.getElementById('mo-panel');
+            if (data.macao_dsn.alarm) {
+                moPanel.className = "mt-2 p-2.5 border border-red-500 bg-red-950/40 animate-pulse text-xs transition-all duration-300";
+                document.getElementById('mo-link').className = "text-red-400 font-bold";
+            } else {
+                moPanel.className = "mt-2 p-2.5 border border-cyan-800 bg-cyan-950/20 text-xs transition-all duration-300";
+                document.getElementById('mo-link').className = "text-cyan-600";
+            }
+        }
         showContent('iss');
-    } catch (e) { 
+    }catch (e) { 
         // 【修復 2】：增加判斷，如果畫面已經有數據了，遇到網路波動就不報錯，直接駐留舊座標！
         const contentEl = document.getElementById('iss-content');
         if (contentEl && contentEl.classList.contains('hidden')) {

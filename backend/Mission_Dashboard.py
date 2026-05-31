@@ -49,10 +49,22 @@ def simulation_tick():
         s = sim_state
         if not s["running"] or s["paused"]: return
         
-        mode = AI_MODES.get(s["aiMode"], AI_MODES["Normal"])
+        mode = AI_MODES.get(s["aiMode"], AI_MODES["Normal"]).copy()
         hour = s["missionTime"] % 24
         days_elapsed = s["missionTime"] / 24.0
         new_events = []
+        
+        # 🆕 帕累托多目標自適應算法注入 (僅在 Dynamic AI 模式下激活)
+        if s["aiMode"] == "Dynamic AI":
+            w_o2 = 12.0 if s["oxygen"] < 35.0 else 1.0
+            w_en = 10.0 if s["energy"] < 30.0 else 1.0
+            w_rad = 6.0 if s["radiation"] > 60.0 else 0.5
+
+            base_act = 0.85 - (w_o2 * 0.04) - (s["radiation"] * 0.002)
+            base_es  = 0.20 + (w_en * 0.05) + (s["radiation"] * 0.003)
+
+            mode["activity"] = max(0.35, min(1.20, base_act))
+            mode["energy_save"] = max(-0.10, min(0.60, base_es))
 
         # 1. 晝夜節律
         if 6 <= hour <= 22:
@@ -133,12 +145,17 @@ def simulation_tick():
         rad_dmg = s["radiation"] * 0.001
         if s["energy"] > 30.0: rad_dmg *= shield_eff
         s["health"] = max(0.0, min(100.0, s["health"] - rad_dmg))
-        if s["food"] < 20.0: s["health"] -= 0.10
-        if s["oxygen"] < 30.0: s["health"] -= 0.30
-        if s["water"] < 20.0: s["health"] -= 0.15
+        if s["food"] < 20.0: s["health"] = max(0.0, s["health"] - 0.10)
+        if s["oxygen"] < 30.0: s["health"] = max(0.0, s["health"] - 0.30)
+        if s["water"] < 20.0: s["health"] = max(0.0, s["health"] - 0.15)
         
         if not s["solarStormActive"]:
-            s["radiation"] = max(s["initRadiation"], round(s["radiation"] - 0.30, 2))
+            if s["radiation"] > s["initRadiation"]:
+                decay_rate = 0.85 if s["energy"] > 20.0 else 0.95
+                excess_rad = s["radiation"] - s["initRadiation"]
+                s["radiation"] = round((excess_rad * decay_rate) + s["initRadiation"], 2)
+            else:
+                s["radiation"] = s["initRadiation"]
 
         # 5. AI 自動化調度干預
         emergency = False
@@ -172,15 +189,20 @@ def simulation_tick():
         w_h = s["water"] / w_net
         e_h = s["energy"] / e_net
         
-        # 雙階段耦合修正 1：能源耗盡 → 再生停止 → 氧氣全速下墜
+                # 雙階段耦合修正：獨立計算並取最小值，防止相互覆蓋
+        o_h_final = o_h
+        
+        # 修正 1：能源耗盡 → 再生停止 → 氧氣全速下墜
         if e_h < o_h and s["energy"] > 0.0:
-            o2_at_energy_zero = s["oxygen"] - o2_net * e_h  # 修正：耗盡前使用淨消耗率
-            o_h = e_h + max(0.0, o2_at_energy_zero / max(EPS, o2_con))
-            
-        # 雙階段耦合修正 2：水資源耗盡 → 再生停止 → 氧氣全速下墜
+            o2_at_energy_zero = s["oxygen"] - o2_net * e_h
+            o_h_final = min(o_h_final, e_h + max(0.0, o2_at_energy_zero / max(EPS, o2_con)))
+
+        # 修正 2：水資源耗盡 → 再生停止 → 氧氣全速下墜
         if w_h < o_h and s["water"] > 0.0:
-            o2_after_water = s["oxygen"] - o2_net * w_h   # 修正：耗盡前使用淨消耗率
-            o_h = w_h + max(0.0, o2_after_water / max(EPS, o2_con))
+            o2_after_water = s["oxygen"] - o2_net * w_h
+            o_h_final = min(o_h_final, w_h + max(0.0, o2_after_water / max(EPS, o2_con)))
+            
+        o_h = o_h_final
             
         s["survivalPrediction"] = max(0.0, round(min(o_h, f_h, w_h, e_h) / 24.0, 1))
 
@@ -189,6 +211,8 @@ def simulation_tick():
         s["missionDay"] = s["missionTime"] // 24
 
         for etype, desc in new_events:
+            if len(s["events"]) > 200:
+                s["events"] = s["events"][-200:]
             s["events"].append({"tick": s["missionTime"], "type": etype, "description": desc})
 
         s["history"].append({
@@ -209,15 +233,17 @@ def simulation_tick():
 def api_start():
     global sim_thread, tick_interval
     stop_event.set()
-    if sim_thread and sim_thread.is_alive(): sim_thread.join()
+    if sim_thread and sim_thread.is_alive():
+        sim_thread.join(timeout=1.5)
     stop_event.clear()
 
     data = request.get_json() or {}
     speed = max(1.0, float(data.get('speed', 10.0)))
     tick_interval = 1.0 / speed
-
+    
     with sim_lock:
-        sim_state.update(DEFAULT_STATE)
+        sim_state.clear()
+        sim_state.update(copy.deepcopy(DEFAULT_STATE))
         sim_state.update({
             "running": True, "crewCount": int(data.get('crewCount', 4)), "aiMode": data.get('aiMode', 'Normal')
         })
@@ -230,7 +256,8 @@ def api_start():
 def api_status():
     # 【解決 Vercel 時間凍結】：前端只要來請求狀態，雲端就強制推演 1 個 Tick (小時)！
     if sim_state.get("running") and not sim_state.get("paused"):
-        simulation_tick()
+        if not sim_thread or not sim_thread.is_alive():
+            simulation_tick()
 
     with sim_lock:
         res = {k: v for k, v in sim_state.items() if k != 'history'}
@@ -256,6 +283,6 @@ def api_reset():
 def sim_loop():
     while not stop_event.is_set():
         simulation_tick()
-        time.sleep(tick_interval)
+        stop_event.wait(tick_interval) # 完美替代 sleep，收到停止信號可瞬間打斷
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5002, debug=True)
