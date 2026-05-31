@@ -831,9 +831,8 @@ function updateCmpCharts(results){
 
 function updateCmpTable(results){
   const sorted = [...results].sort((a,b)=>{
-    const ga = a.history.slice(-1)[0]?.survivalPrediction ?? 0;
-    const gb = b.history.slice(-1)[0]?.survivalPrediction ?? 0;
-    return gb - ga;
+    // 💡 修复：按照“实际存活的物理天数(数组长度)”来排名，而不是死后的剩余寿命(0)
+    return b.history.length - a.history.length;
   });
   const medals = ['🥇','🥈','🥉'];
 
@@ -846,7 +845,8 @@ function updateCmpTable(results){
 
   sorted.forEach((r,i)=>{
     const last   = r.history.slice(-1)[0] || {};
-    const sv     = (last.survivalPrediction ?? 0).toFixed(1);
+    // 💡 修复：表格直接显示该策略实际坚持了多少天
+    const sv     = (r.history.length).toFixed(1);
     const color  = MODE_COLORS[r.mode];
     const medal  = medals[i] || `${i+1}`;
     const stc    = r.survived ? 'var(--good)' : 'var(--danger)';
