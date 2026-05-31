@@ -1,15 +1,19 @@
 {
   "version": 2,
+  "builds": [
+    { "src": "frontend/**", "use": "@vercel/static" },
+    { "src": "backend/*.py", "use": "@vercel/python" }
+  ],
   "routes": [
-    { "src": "/api/sim/(.*)", "dest": "/api/Simulation_System.py" },
-    { "src": "/api/space/(.*)", "dest": "/api/Space_Data_Center.py" },
-    { "src": "/api/dash/(.*)", "dest": "/api/Mission_Dashboard.py" },
+    { "src": "/api/sim/(.*)", "dest": "/backend/Simulation_System.py" },
+    { "src": "/api/space/(.*)", "dest": "/backend/Space_Data_Center.py" },
+    { "src": "/api/dash/(.*)", "dest": "/backend/Mission_Dashboard.py" },
     { "src": "/", "dest": "/frontend/index.html" },
     { "src": "/(.*)", "dest": "/frontend/$1" }
   ],
   "functions": {
-    "api/*.py": {
-      "maxDuration": 10
+    "backend/*.py": {
+      "maxDuration": 10 
     }
   }
 }
