@@ -10,5 +10,10 @@
     { "src": "/api/dash/(.*)", "dest": "/backend/Mission_Dashboard.py" },
     { "src": "/", "dest": "/frontend/index.html" },
     { "src": "/(.*)", "dest": "/frontend/$1" }
-  ]
+  ],
+  "functions": {
+    "backend/*.py": {
+      "maxDuration": 10 
+    }
+  }
 }

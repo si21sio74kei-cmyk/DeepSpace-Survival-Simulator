@@ -243,13 +243,16 @@ def api_pause():
     with sim_lock:
         sim_state['paused'] = not sim_state.get('paused', False)
         return jsonify({"paused": sim_state['paused']})
-
 @app.route('/api/dash/reset', methods=['POST'])
 def api_reset():
     stop_event.set()
-    with sim_lock: sim_state.update(DEFAULT_STATE)
+    if sim_thread and sim_thread.is_alive():
+        sim_thread.join(timeout=1.5) # 等待线程死亡
+    stop_event.clear()               # 重置信号，允许下次启动
+    with sim_lock:
+        sim_state.clear()
+        sim_state.update(copy.deepcopy(DEFAULT_STATE))
     return jsonify({"success": True})
-
 def sim_loop():
     while not stop_event.is_set():
         simulation_tick()
