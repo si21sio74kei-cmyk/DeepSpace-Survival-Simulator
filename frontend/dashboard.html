@@ -134,8 +134,9 @@
     <script>
     // 【統一數據大腦】：強制連線至 Simulation System 的核心
     // 🔴 修复：【獨立預測大腦】：強制連線至 5002 影子預測引擎
-    // 💡 终极修复：跨终端局域网演示动态 IP 绑定 (影子引擎 5002)
-    const API = `http://${window.location.hostname}:5002/api/dash`;
+    const API = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
+        ? 'http://127.0.0.1:5002/api/dash' 
+        : '/api/dash';
         let pollTimer = null;
         let simChart;
 
