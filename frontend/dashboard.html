@@ -275,11 +275,13 @@ async function syncFromMaster() {
         const masterData = await masterResponse.json();
         statusText.innerText = `✅ 抓取成功！當前 O₂: ${masterData.oxygen.toFixed(1)}% | 能源: ${masterData.energy.toFixed(1)}%`;
 
-        // 2. 将战报“注入”到 5002 影子引擎
-        // 2. 💡 修复：无需挑三拣四，直接将主引擎的 100% 完整物理快照无损注入影子引擎
-        const injectResponse = await fetch('/api/dash/inject_snapshot', {
+        // 2. 💡 修复：使用动态 API 路径，并补上 X-Mission-Control-Key 鉴权密匙
+        const injectResponse = await fetch(`${API}/inject_snapshot`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Mission-Control-Key': 'MACAO_SPACE_2026'
+            },
             body: JSON.stringify(masterData)
         });
 
