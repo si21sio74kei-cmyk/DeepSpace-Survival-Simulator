@@ -1264,18 +1264,28 @@ function updateElog(events){
 initLiveCharts();
 buildModeCBs();
 applyLang();
+
 async function sendCmd(cmd) {
   try {
-    await fetch(`${API}/command`, {
+    const res = await fetch(`${API}/command`, {
       method: 'POST', 
       headers: { 
-          'Content-Type': 'application/json',
-          // 💡 修复：补上通行证密匙，突破 Python 后端的安全防御！
-          'X-Mission-Control-Key': 'MACAO_SPACE_2026' 
+        'Content-Type': 'application/json',
+        // 🔑 必须带上密匙，否则 Python 后端会把你当成黑客拦截！
+        'X-Mission-Control-Key': 'MACAO_SPACE_2026' 
       },
       body: JSON.stringify({ command: cmd })
     });
-  } catch(e) { console.error("指令发送失败"); }
+    
+    if (res.ok) {
+      // 💡 成功提示弹窗
+      alert(`✅ 指令 [${cmd}] 已成功發送至深空基地！\n請觀察左側資源條與事件日誌的變化。`);
+    } else {
+      alert(`❌ 指令被拒絕：安全校驗失敗或模擬未啟動`);
+    }
+  } catch(e) { 
+    alert("❌ 網路異常，指令發送失敗！"); 
+  }
 }
 updateModeDesc();
 </script>

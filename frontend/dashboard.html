@@ -75,8 +75,6 @@
                 <div class="pt-6 space-y-3">
                     <button class="btn text-[var(--good)] border-[var(--good)]" onclick="startSim()">▶ 啟動推演矩陣</button>
                     <button class="btn text-[var(--warn)] border-[var(--warn)]" onclick="pauseSim()">⏸ 暫停 / 繼續</button>
-                    <button class="btn text-[var(--danger)] border-[var(--danger)]" onclick="resetSim()">■ 中止重置</button>
-                    <!-- 方案C：统一风格的同步按钮 -->
                      <button class="btn text-[var(--danger)] border-[var(--danger)]" onclick="resetSim()">■ 中止重置</button>
                     
                     <div style="border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px;">
@@ -264,18 +262,24 @@ async function syncFromMaster() {
     
     btn.disabled = true;
     statusText.style.color = '#ff0';
-    statusText.innerText = '⏳ 正在連接前線主引擎 (Port 5000)...';
+    statusText.innerText = '⏳ 正在連接前線主引擎...';
 
     try {
-        // 1. 跨域抓取 5000 主引擎的实时战报
-        const masterUrl = `${window.location.protocol}//${window.location.hostname}:5000/api/sim/status`;
+        // 1. 智慧網絡路由：Vercel雲端用相對路徑，本地區網才加 5000 埠
+        let masterUrl = '/api/sim/status'; 
+        if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') {
+            masterUrl = 'http://127.0.0.1:5000/api/sim/status';
+        } else if (window.location.port || window.location.hostname.startsWith('192.168')) {
+            masterUrl = `${window.location.protocol}//${window.location.hostname}:5000/api/sim/status`;
+        }
+        
         const masterResponse = await fetch(masterUrl);
-        if (!masterResponse.ok) throw new Error('主引擎無響應，請確保 5000 端口已啟動');
+        if (!masterResponse.ok) throw new Error('主引擎無響應');
         
         const masterData = await masterResponse.json();
         statusText.innerText = `✅ 抓取成功！當前 O₂: ${masterData.oxygen.toFixed(1)}% | 能源: ${masterData.energy.toFixed(1)}%`;
 
-        // 2. 💡 修复：使用动态 API 路径，并补上 X-Mission-Control-Key 鉴权密匙
+        // 2. 注入影子引擎 (補上 API 密鑰與動態路由，突破安全防禦)
         const injectResponse = await fetch(`${API}/inject_snapshot`, {
             method: 'POST',
             headers: { 
@@ -284,20 +288,14 @@ async function syncFromMaster() {
             },
             body: JSON.stringify(masterData)
         });
+        
+        if (!injectResponse.ok) throw new Error('注入被安全系統攔截 (API Key 錯誤)');
 
-        if (injectResponse.ok) {
-            statusText.style.color = '#0f0';
-            statusText.innerText = '🚀 殘局同步完畢！影子引擎已接管，準備開始極限預測...';
-            
-            // 3. 自动触发 5002 的 UI 刷新，让图表立刻显示注入的初始点
-            if (typeof updateDashboard === 'function') {
-                updateDashboard(); // 如果您有定时刷新函数，可以调用它
-            } else {
-                // 如果没有，直接模拟点击一次“启动”按钮，让 5002 基于残局开始跑
-                const startBtn = document.getElementById('btn-start') || document.querySelector('button[onclick*="start"]');
-                if(startBtn) startBtn.click();
-            }
-        }
+        statusText.style.color = '#0f0';
+        statusText.innerText = '🚀 殘局同步完畢！影子引擎已接管！';
+        
+        const startBtn = document.getElementById('btn-start') || document.querySelector('button[onclick*="start"]');
+        if(startBtn) startBtn.click();
 
     } catch (error) {
         statusText.style.color = '#f00';
