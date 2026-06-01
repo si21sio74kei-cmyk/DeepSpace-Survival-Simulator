@@ -84,11 +84,25 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9000;
 .lang-btn:hover{background:rgba(0,212,255,.18);}
 
 /* ── LIVE LAYOUT ── */
-#live-view{display:grid;grid-template-rows:1fr 204px;
-  height:calc(100vh - 46px);gap:4px;padding:4px;}
-#live-main{display:grid;grid-template-columns:214px 1fr 204px;gap:4px;min-height:0;}
-#live-charts{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
+/* 💡 修复：改为 flex 布局并允许垂直滚动，彻底解决小屏幕太挤、日志被挡住的问题 */
+#live-view{display:flex;flex-direction:column;
+  height:calc(100vh - 46px);overflow-y:auto;gap:6px;padding:6px;}
+#live-main{display:grid;grid-template-columns:230px 1fr 230px;gap:6px;min-height:480px;flex:1;}
+#live-charts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;height:230px;flex-shrink:0;}
 #panel-left,#panel-right{overflow-y:auto;display:flex;flex-direction:column;}
+#elog {min-height: 120px;} /* 确保事件日志永远有足够的最小高度 */
+
+/* 🆕 战术悬浮通知中心 (HUD Toast) */
+#hud-toast {
+  position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+  z-index: 9999; padding: 12px 24px; font-size: 13px; font-weight: bold;
+  letter-spacing: 1px; border: 1px solid; border-radius: 4px;
+  background: rgba(4, 12, 26, 0.95); backdrop-filter: blur(4px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0; pointer-events: none;
+}
+.toast-show { opacity: 1 !important; transform: translate(-50%, 15px) !important; }
+.toast-success { color: var(--good); border-color: var(--good); box-shadow: 0 0 20px rgba(0,255,136,0.25); }
+.toast-error { color: var(--danger); border-color: var(--danger); box-shadow: 0 0 20px rgba(255,51,85,0.25); }
 
 /* ── COMPARE LAYOUT ── */
 #cmp-view{height:calc(100vh - 46px);overflow-y:auto;padding:4px;
@@ -140,6 +154,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9000;
     <button class="tab-btn"        id="tab-compare" onclick="switchTab('compare')">多组对比</button>
   </div>
 </header>
+
+<div id="hud-toast" class="font-mono"></div>
 
 <!-- =========================================================
      LIVE VIEW
@@ -965,15 +981,36 @@ function runSim(initParams, modeName, totalDays, stochastic){
     s.stability = Math.max(0, Math.min(100,
       (s.oxygen+s.food+s.water+s.energy+s.health)/5.0 - (s.radiation/100.0)*20.0));
 
+      // 💡 终极同步：1:1 还原 Python 后端强耦合二阶寿命预测公式，消除前后台计算漂移
     const EPS  = 1e-4;
     const o2nr = Math.max(EPS, o2Con - o2Gen);
     const fnr  = Math.max(EPS, fCon);
     const wnr  = Math.max(EPS, netW);
     const enr  = Math.max(EPS, eCon - solar);
-    let oh = s.oxygen/o2nr, fh = s.food/fnr, wh = s.water/wnr, eh = s.energy/enr;
-    if (eh < oh && s.energy > 0){ const oz=s.oxygen-o2nr*eh; oh=eh+Math.max(0,oz/Math.max(EPS,o2Con)); }
-    if (wh < oh && s.water  > 0){ const ow=s.oxygen-o2nr*wh; oh=wh+Math.max(0,ow/Math.max(EPS,o2Con)); }
-    s.survivalPrediction = Math.max(0, Math.min(oh,fh,wh,eh)/24.0);
+    
+    let oh = s.oxygen / o2nr;
+    let fh = s.food / fnr;
+    let wh = s.water / wnr;
+    let eh = s.energy / enr;
+    
+    // 引入断电/断水后全员被迫进入生理低代谢状态的极限耗氧常数
+    const emergencyO2Con = crew * 0.40 * 0.03;
+    let o2hFinal = oh;
+    
+    // 耦合修正 1：若电量先耗尽 -> 停止再生 -> 氧气按照应急极低代谢率下坠
+    if (eh < oh && s.energy > 0) {
+      const o2AtEnergyZero = s.oxygen - o2nr * eh;
+      o2hFinal = Math.min(o2hFinal, eh + Math.max(0, o2AtEnergyZero / Math.max(EPS, emergencyO2Con)));
+    }
+    
+    // 耦合修正 2：若水资源先耗尽 -> 停止再生 -> 氧气按照应急极低代谢率下坠
+    if (wh < oh && s.water > 0) {
+      const o2AfterWater = s.oxygen - o2nr * wh;
+      o2hFinal = Math.min(o2hFinal, wh + Math.max(0, o2AfterWater / Math.max(EPS, emergencyO2Con)));
+    }
+    
+    oh = o2hFinal;
+    s.survivalPrediction = Math.max(0, Math.min(oh, fh, wh, eh) / 24.0);
 
 
     // Failure
@@ -1264,6 +1301,18 @@ function updateElog(events){
 initLiveCharts();
 buildModeCBs();
 applyLang();
+// 🆕 高级 HUD 通知控制器
+let toastTimer = null;
+function showToast(msg, isError = false) {
+  const toast = document.getElementById('hud-toast');
+  toast.className = 'font-mono toast-show ' + (isError ? 'toast-error' : 'toast-success');
+  toast.innerHTML = (isError ? '❌ ' : '✅ ') + msg;
+  
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { 
+    toast.classList.remove('toast-show'); 
+  }, 3500); // 3.5秒后自动淡出消失
+}
 
 async function sendCmd(cmd) {
   try {
@@ -1271,20 +1320,20 @@ async function sendCmd(cmd) {
       method: 'POST', 
       headers: { 
         'Content-Type': 'application/json',
-        // 🔑 必须带上密匙，否则 Python 后端会把你当成黑客拦截！
         'X-Mission-Control-Key': 'MACAO_SPACE_2026' 
       },
       body: JSON.stringify({ command: cmd })
     });
     
     if (res.ok) {
-      // 💡 成功提示弹窗
-      alert(`✅ 指令 [${cmd}] 已成功發送至深空基地！\n請觀察左側資源條與事件日誌的變化。`);
+      // 💡 动态解析友好的指令名称
+      const cmdName = cmd === 'ACTIVATE_RAD_SHIELD' ? '过载强磁盾' : '强令休眠';
+      showToast(`UPLINK ACCEPTED: [${cmdName}] 指令已生效，系统正在重定向资源...`);
     } else {
-      alert(`❌ 指令被拒絕：安全校驗失敗或模擬未啟動`);
+      showToast(`UPLINK REJECTED: 安全校验失败或模拟未启动`, true);
     }
   } catch(e) { 
-    alert("❌ 網路異常，指令發送失敗！"); 
+    showToast("UPLINK FAILED: 网络异常，指令发送失败", true); 
   }
 }
 updateModeDesc();
