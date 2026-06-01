@@ -844,7 +844,7 @@ function updateCmpTable(results){
 
   sorted.forEach((r,i)=>{
     const last   = r.history.slice(-1)[0] || {};
-    const sv     = (r.history.length / 24).toFixed(1); 
+    const sv     = (r.history.length).toFixed(1); 
     const color  = MODE_COLORS[r.mode];
     const medal  = medals[i] || `${i+1}`;
     
@@ -975,10 +975,6 @@ function runSim(initParams, modeName, totalDays, stochastic){
     if (wh < oh && s.water  > 0){ const ow=s.oxygen-o2nr*wh; oh=wh+Math.max(0,ow/Math.max(EPS,o2Con)); }
     s.survivalPrediction = Math.max(0, Math.min(oh,fh,wh,eh)/24.0);
 
-    // 🆕 注入胜利条件：撑到第 100 天，地球救援舰队成功对接！
-    if (day >= 100) {
-      break; 
-    }
 
     // Failure
     if (s.oxygen<=0||s.health<=0||s.food<=0||s.water<=0){
