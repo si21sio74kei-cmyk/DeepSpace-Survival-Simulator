@@ -41,25 +41,44 @@ def get_iss():
     except Exception as e:
         return jsonify({'error': '無法獲取 ISS 數據'}), 500
 
-# [卡片 2] SpaceX 最新任務
+# [卡片 2] 最新航天發射任務 (Launch Library 2 — 取代已失效的 SpaceX API v4)
 @app.route('/api/space/spacex', methods=['GET'])
 def get_spacex():
     try:
-        response = requests.get('https://api.spacexdata.com/v4/launches/latest', timeout=5)
+        # api.spacexdata.com 已永久下線 (522)，改用社群維護的 Launch Library 2
+        response = requests.get('https://ll.thespacedevs.com/2.2.0/launch/previous/?limit=1', timeout=8)
         response.raise_for_status()
         data = response.json()
-        utc_date = data.get('date_utc', '')
+        results = data.get('results', [])
+        if not results:
+            raise Exception('No launch data returned')
+        latest = results[0]
+
+        utc_date = latest.get('net', '')
         formatted_date = utc_date[0:10] + " " + utc_date[11:19] if len(utc_date) >= 19 else utc_date
+
+        # 解析火箭名稱 (LL2 嵌套結構)
+        rocket_name = latest.get('rocket', {}).get('configuration', {}).get('full_name', '未知火箭')
+
+        # 解析任務詳情
+        mission = latest.get('mission') or {}
+        details = mission.get('description') or '暫無本次任務詳細描述。'
+
+        # 解析直播鏈接
+        vid_urls = latest.get('vid_urls') or []
+        webcast = vid_urls[0].get('url', '#') if vid_urls else '#'
+
         return jsonify({
-            'name': data.get('name', '未知任務'),
+            'name': latest.get('name', '未知任務'),
             'date': formatted_date,
-            'rocket': data.get('rocket', '未知火箭'),
-            'success': data.get('success', False),
-            'details': data.get('details') or '暫無本次任務詳細描述。',
-            'webcast': data.get('links', {}).get('webcast', '#')
+            'rocket': rocket_name,
+            'success': latest.get('status', {}).get('abbrev') == 'Success',
+            'details': details,
+            'webcast': webcast
         })
     except Exception as e:
-        return jsonify({'error': '無法獲取 SpaceX 數據'}), 500
+        print(f"Launch Library Error: {e}")
+        return jsonify({'error': '無法獲取航天發射數據'}), 500
 # [卡片 3] 🪐 宇宙天體觀測 (支援地球/火星/月球)
 @app.route('/api/space/space-body', methods=['GET'])
 def get_space_body():
@@ -78,42 +97,21 @@ def get_space_body():
             raise Exception("Earth data empty")
             
         elif body_type == 'mars':
-            try:
-                url = f'https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos?sol=1000&page=1&api_key={NASA_KEY}'
-                response = requests.get(url, timeout=5)
-                photos = response.json().get('photos', [])
-                if photos:
-                    pic = photos[0]
-                    return jsonify({
-                        'date': pic.get('earth_date', '2015-05-30'),
-                        'caption': f"好奇號（Curiosity）火星表面實地拍攝。觀測載荷：{pic.get('camera', {}).get('full_name')}",
-                        'imageUrl': pic.get('img_src', '').replace('http://', 'https://')
-                    })
-                raise Exception("Mars photos empty")
-            except Exception as e:
-                print(f"Mars Fetch Error: {e}") # 🟠 修复：捕获具体异常
-                return jsonify({
-                    'date': '2026-05-28 MATRIX REF',
-                    'caption': '☄️ 火星地表探測矩陣（即時備用通聯解算）。觀測載荷：Mast Camera ─ 高清紅色荒漠',
-                    'imageUrl': 'https://images.unsplash.com/photo-1545156521-77bd85671d30?w=800&auto=format&fit=crop'
-                })
+            # NASA Mars Rover Photos API 的 Heroku 後端已永久下線 (404 "No such app")
+            # 直接使用高質量備用數據，避免無效 API 調用造成的 5 秒延遲
+            return jsonify({
+                'date': '2026-06-12 MARS TELEMETRY',
+                'caption': '☄️ 火星地表探測矩陣 — 好奇號（Curiosity）蓋爾隕石坑實地觀測。觀測載荷：Mast Camera (Mastcam) 高清彩色成像 │ 著陸日期：2012-08-06 │ 總行駛里程：>30 km',
+                'imageUrl': 'https://images.unsplash.com/photo-1545156521-77bd85671d30?w=800&auto=format&fit=crop'
+            })
             
         elif body_type == 'moon':
-            try:
-                url = 'https://api.le-systeme-solaire.net/rest/bodies/moon'
-                data = requests.get(url, timeout=4).json()
-                return jsonify({
-                    'date': 'REALTIME LUNAR ORBIT',
-                    'caption': f"月球物理母體指標 ─ 重力: {data.get('gravity', 1.62)} m/s² │ 半徑: {data.get('meanRadius', 1737.4)} km │ 密度: {data.get('density', 3.34)} g/cm³",
-                    'imageUrl': 'https://images.unsplash.com/photo-1522030299830-16b8d3d049fe?w=800'
-                })
-            except Exception as e:
-                print(f"Moon Fetch Error: {e}") # 🟠 修复：捕获具体异常
-                return jsonify({
-                    'date': 'LUNAR TELEMETRY CACHE',
-                    'caption': "🌙 月球軌道物理指標（安全星曆解算）─ 表面重力: 1.62 m/s² │ 平均半徑: 1737.4 km",
-                    'imageUrl': 'https://images.unsplash.com/photo-1522030299830-16b8d3d049fe?w=800'
-                })
+            # api.le-systeme-solaire.net 現在要求 API Key (401)，月球物理常數為靜態數據，直接硬編碼
+            return jsonify({
+                'date': 'REALTIME LUNAR ORBIT',
+                'caption': "🌙 月球軌道物理指標（NASA 星曆基準）─ 表面重力: 1.62 m/s² │ 平均半徑: 1737.4 km │ 密度: 3.34 g/cm³ │ 與地球平均距離: 384,400 km",
+                'imageUrl': 'https://images.unsplash.com/photo-1522030299830-16b8d3d049fe?w=800'
+            })
     except Exception as e:
         print(f"Space Body Main Error: {e}") # 🟠 修复：捕获具体异常
         return jsonify({
@@ -151,49 +149,78 @@ def get_weather():
     except Exception as e:
         print(f"Weather Fetch Error: {e}")  # 🟠 修复：捕获具体异常
         return jsonify({'error': '獲取氣象數據超時'}), 500
-# [卡片 5] NASA 太陽風暴 (CME) 代理 (真實抓取 + 滿級容錯防禦)
+# [卡片 5] 太陽風暴監測 (NASA DONKI + NOAA SWPC 雙備援)
 @app.route('/api/space/solar-storm', methods=['GET'])
 def get_solar_storm():
+    # --- 方法 1：嘗試 NASA DONKI ---
     try:
-        url = f'https://api.nasa.gov/DONKI/CME?api_key={NASA_KEY}'
-        response = requests.get(url, timeout=10)
-        
-        # 【防禦 1】：攔截 NASA 奇葩的 404 (表示近期無風暴)，轉化為安全播報
-        if response.status_code == 404:
-            return jsonify({
-                'startTime': 'N/A',
-                'catalog': 'N/A',
-                'instruments': 'SOHO, STEREO (巡航待命中)',
-                'note': '【安全播報】：當前太陽日冕層活動平穩，無風暴記錄。'
-            })
-            
-        response.raise_for_status()
-        res_data = response.json()
-        
-        # 正常抓取真實數據 (你舊代碼的完美邏輯)
-        if isinstance(res_data, list) and len(res_data) > 0:
-            latest_cme = res_data[-1]
-            instruments_data = latest_cme.get('instruments') or []
-            instruments = [i.get('displayName') for i in instruments_data if i.get('displayName')]
-            
-            return jsonify({
-                'startTime': latest_cme.get('startTime', '未知時間'),
-                'catalog': latest_cme.get('catalog', '未知目錄'),
-                'note': latest_cme.get('note') or '深空太陽風暴觀測日誌完整載入。',
-                'instruments': ', '.join(instruments) if instruments else '無'
-            })
-        else:
-            # 【防禦 2】：補齊欄位結構，防止前端顯示 undefined
-            return jsonify({
-                'startTime': 'N/A',
-                'catalog': 'N/A',
-                'instruments': 'SOHO, STEREO (巡航待命中)',
-                'note': '【安全播報】：當前太陽活動平穩，無風暴記錄。'
-            })
-            
+        donki_url = f'https://api.nasa.gov/DONKI/CME?api_key={NASA_KEY}'
+        donki_resp = requests.get(donki_url, timeout=3)
+        if donki_resp.status_code == 200:
+            donki_data = donki_resp.json()
+            if isinstance(donki_data, list) and len(donki_data) > 0:
+                latest_cme = donki_data[-1]
+                instruments_data = latest_cme.get('instruments') or []
+                instruments = [i.get('displayName') for i in instruments_data if i.get('displayName')]
+                return jsonify({
+                    'startTime': latest_cme.get('startTime', '未知時間'),
+                    'catalog': latest_cme.get('catalog', '未知目錄'),
+                    'note': latest_cme.get('note') or '深空太陽風暴觀測日誌完整載入。',
+                    'instruments': ', '.join(instruments) if instruments else '無'
+                })
+            # DONKI 200 但無數據 = 近期無 CME
+        elif donki_resp.status_code == 404:
+            pass  # DONKI 404 = 無風暴記錄，繼續嘗試 NOAA
     except Exception as e:
-        print(f"Solar Storm Error: {e}")
-        # 【防禦 3】：如果是你的電腦真的斷網了，保證大屏 UI 不會變成紅叉報錯
+        print(f"DONKI unreachable: {e}")
+
+    # --- 方法 2：NOAA SWPC 太空天氣警報 (免 Key，全球可達) ---
+    try:
+        noaa_url = 'https://services.swpc.noaa.gov/products/alerts.json'
+        noaa_resp = requests.get(noaa_url, timeout=5)
+        noaa_resp.raise_for_status()
+        alerts = noaa_resp.json()
+
+        if isinstance(alerts, list) and len(alerts) > 0:
+            latest = alerts[0]
+            issue_time = latest.get('issue_datetime', '')
+            product_id = latest.get('product_id', 'N/A')
+            message = latest.get('message', '')
+
+            # 解析 NOAA Scale (G1-G5)
+            g_scale = ''
+            if 'G5' in message:
+                g_scale = ' [G5 - Extreme]'
+            elif 'G4' in message:
+                g_scale = ' [G4 - Severe]'
+            elif 'G3' in message:
+                g_scale = ' [G3 - Strong]'
+            elif 'G2' in message:
+                g_scale = ' [G2 - Moderate]'
+            elif 'G1' in message:
+                g_scale = ' [G1 - Minor]'
+
+            # 取 message 第一行作為摘要
+            first_line = message.strip().split('\n')[0] if message else ''
+
+            return jsonify({
+                'startTime': issue_time[:19] if len(issue_time) >= 19 else (issue_time or 'N/A'),
+                'catalog': f'NOAA/{product_id}{g_scale}',
+                'note': message[:500] if message else '無詳細資料',
+                'instruments': f'NOAA SWPC | {first_line[:90]}' if first_line else 'NOAA SWPC 監測中'
+            })
+
+        # NOAA 無警報 → 太空天氣平靜
+        return jsonify({
+            'startTime': 'N/A',
+            'catalog': 'N/A',
+            'instruments': 'NOAA SWPC, SOHO, STEREO (巡航待命中)',
+            'note': '【安全播報】：當前太陽活動平穩，NOAA 無活躍太空天氣警報。'
+        })
+
+    except Exception as e:
+        print(f"NOAA SWPC Error: {e}")
+        # --- 方法 3：完全離線的終極防禦 ---
         return jsonify({
              'startTime': 'N/A',
              'catalog': 'N/A',

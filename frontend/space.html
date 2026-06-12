@@ -311,9 +311,9 @@ async function fetchISS() {
                 document.getElementById('weather-content').classList.add('hidden');
 
                 const cityValue = document.getElementById('city-select').value;
-                const [province, city] = cityValue.split(',');
-                
-                const res = await fetch(`${BACKEND_URL}/weather?province=${encodeURIComponent(province)}&city=${encodeURIComponent(city)}`);
+                const city = cityValue.split(',')[1];  // 只需城市名，省份由後端 ALLOWED_CITIES 字典決定
+
+                const res = await fetch(`${BACKEND_URL}/weather?city=${encodeURIComponent(city)}`);
                 const data = await res.json();
                 
                 document.getElementById('w-status').innerText = data.weather || '未知';
