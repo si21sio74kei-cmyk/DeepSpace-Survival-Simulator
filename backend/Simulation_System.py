@@ -12,6 +12,7 @@ import time
 import random
 import math
 import copy
+from simulation_core import step_simulation
 
 app = Flask(__name__)
 CORS(app)
@@ -86,6 +87,7 @@ DEFAULT_STATE = {
     "solarStormProbability": 5.0,
     "solarStormActive": False,
     "equipmentEfficiency": 1.0,
+    "bioEfficiency": 1.0,
     "activityFactor": 1.0,
     "emergencyMode": False,
     "events": [], "history": [],
@@ -106,309 +108,34 @@ def simulation_tick():
         s = sim_state
         if not s["running"] or s["paused"]:
             return
-        # 🆕 必须使用 .copy()，防止动态计算污染全局基准模板
+        # 单一公式来源：backend/simulation_core.py（消除三端公式分叉）
         mode = AI_MODES.get(s["aiMode"], AI_MODES["Normal"]).copy()
-        hour         = s["missionTime"] % 24
-        days_elapsed = s["missionTime"] / 24.0
-        new_events   = []
+        step_simulation(s, mode)
 
-        # 🆕 帕累托多目标自适应算法注入 (仅在 Dynamic AI 模式下激活)
-        if s["aiMode"] == "Dynamic AI":
-            w_o2 = 12.0 if s["oxygen"] < 35.0 else 1.0
-            w_en = 10.0 if s["energy"] < 30.0 else 1.0
-            w_rad = 6.0 if s["radiation"] > 60.0 else 0.5
-
-            base_act = 0.85 - (w_o2 * 0.04) - (s["radiation"] * 0.002)
-            base_es  = 0.20 + (w_en * 0.05) + (s["radiation"] * 0.003)
-
-            mode["activity"] = max(0.35, min(1.20, base_act))
-            mode["energy_save"] = max(-0.10, min(0.60, base_es))
-
-        # ─────────────────────────────────────────────────
-        # 建议一：昼夜节律 Circadian Rhythm
-        # ─────────────────────────────────────────────────
-        if 6 <= hour <= 22:
-            activity = mode["activity"]
-            phase = "DAY"
-        else:
-            activity = mode["activity"] * 0.40
-            phase = "NIGHT"
-        s["activityFactor"] = round(activity, 3)
-
-        # 🆕 新增：舱内温度微小动态波动（白噪声 + 昼夜温差模拟）
-        base_t = s.get("initTemperature", 22.0)
-        target_t = base_t + (0.6 if phase == "DAY" else -0.4) # 白天略热，夜晚略冷
-        # 向目标温度平滑逼近，并加入微小随机白噪声扰动 (±0.15度)
-        s["temperature"] = round(s["temperature"] + (target_t - s["temperature"]) * 0.15 + random.uniform(-0.15, 0.15), 2)
-
-        # ─────────────────────────────────────────────────
-        # 建议三：设备老化衰减 Equipment Degradation
-        # ─────────────────────────────────────────────────
-        equip_eff = max(0.50, 1.0 - (days_elapsed / 365.0) * 0.20)
-        s["equipmentEfficiency"] = round(equip_eff, 3)
-
-        # ─────────────────────────────────────────────────
-        # 随机事件系统（保留）
-        # ─────────────────────────────────────────────────
-        # 太阳风暴
-        if s["solarStormActive"]:
-            s["radiation"] = min(100.0, s["radiation"] + 0.80)
-            if random.random() < 0.06:
-                s["solarStormActive"] = False
-                new_events.append(("SOLAR_STORM_END",
-                    "☀ Solar storm subsiding — radiation normalizing"))
-        elif random.random() < (s["solarStormProbability"] / 100.0) / 24.0:
-            s["solarStormActive"] = True
-            spike = random.uniform(15.0, 28.0)
-            s["radiation"] = min(100.0, s["radiation"] + spike)
-            new_events.append(("SOLAR_STORM",
-                f"⚡ SOLAR STORM! Radiation +{spike:.1f} mSv"))
-
-        # 随机故障（概率随设备老化上升）
-        fail_mult = 2.0 - equip_eff   # 老化越高故障概率越大
-        if random.random() < 0.004 * fail_mult:
-            leak = round(random.uniform(3.0, 9.0), 1)
-            s["oxygen"] = max(0.0, s["oxygen"] - leak)
-            new_events.append(("OXYGEN_LEAK",
-                f"💨 Oxygen Leak Detected! O₂ −{leak}%"))
-
-        if random.random() < 0.003 * fail_mult:
-            loss = round(random.uniform(2.0, 7.0), 1)
-            s["food"] = max(0.0, s["food"] - loss)
-            new_events.append(("COLDCHAIN_FAIL",
-                f"🧊 Cold-Chain Failure! Food −{loss}%"))
-
-        if random.random() < 0.003 * fail_mult:
-            loss = round(random.uniform(5.0, 12.0), 1)
-            s["energy"] = max(0.0, s["energy"] - loss)
-            new_events.append(("ENERGY_FAIL",
-                f"🔌 Power System Failure! Energy −{loss}%"))
-
-        if random.random() < 0.0015 * fail_mult:
-            loss = round(random.uniform(3.0, 8.0), 1)
-            s["health"] = max(0.0, s["health"] - loss)
-            new_events.append(("MEDICAL_EMERGENCY",
-                f"🚑 Medical Emergency! Health −{loss}%"))
-
-        # ─────────────────────────────────────────────────
-        # 建议四：资源耦合计算
-        # ─────────────────────────────────────────────────
-
-        # --- 氧气消耗（辐射加剧呼吸损耗）---
-        rad_factor    = 1.0 + (s["radiation"] / 100.0) * 0.30
-        o2_consumption = s["crewCount"] * activity * rad_factor * 0.03
-
-        # 建议二：氧气再生（电解水，依赖能源，受设备老化影响）
-        regen_eff = mode["regen_boost"] * equip_eff
-        if s["energy"] > 50.0:
-            elec_rate         = 0.50 * regen_eff * (1.0 - mode["energy_save"] * 0.5)
-            o2_regen          = elec_rate * 0.015
-            water_for_elec    = elec_rate * 0.008
-        elif s["energy"] > 20.0:
-            frac              = (s["energy"] - 20.0) / 30.0
-            o2_regen          = 0.015 * frac * regen_eff
-            water_for_elec    = 0.004 * frac
-        else:
-            # 能源过低：再生完全停止（建议四：强耦合）
-            o2_regen       = 0.0
-            water_for_elec = 0.0
-
-        s["oxygen"] = max(0.0, min(100.0, s["oxygen"] - o2_consumption + o2_regen))
-
-        # --- 食物消耗（健康影响活动效率，建议四）---
-        health_factor    = 1.0 if s["health"] >= 50.0 else (s["health"] / 50.0)
-        food_consumption = s["crewCount"] * activity * mode["ration"] * 0.02 * health_factor
-        s["food"] = max(0.0, s["food"] - food_consumption)
-
-        # --- 水资源（消耗 − 建议二回收 + 电解消耗）---
-        water_consumption = s["crewCount"] * activity * 0.025
-        # 建议二：生命支持系统水回收（~32%）
-        water_recycling   = s["crewCount"] * 0.008 * equip_eff
-        net_water         = water_consumption - water_recycling + water_for_elec
-        s["water"] = max(0.0, min(100.0, s["water"] - net_water))
-
-        # --- 能源消耗 ---
-        sys_load   = 1.0 - mode["energy_save"]
-        temp_ctrl  = abs(s["temperature"] - 22.0) * 0.02
-        e_consumption = sys_load * 0.05 + s["radiation"] * 0.01 + temp_ctrl * 0.03
-
-        # 建议四：辐射加速设备耗能
-        if s["radiation"] > 60.0:
-            e_consumption *= 1.0 + (s["radiation"] - 60.0) / 100.0
-
-        # 建议二：太阳能充电（白天，非太阳风暴，随设备老化衰减）
-        solar_output = 0.0
-        if not s["solarStormActive"] and 8 <= hour <= 18:
-            day_factor   = math.sin(math.pi * (hour - 8) / 10.0)
-            solar_output = 0.08 * day_factor * equip_eff
-
-        s["energy"] = max(0.0, min(100.0, s["energy"] - e_consumption + solar_output))
-
-        # --- 健康（辐射 + 资源匮乏，建议四）---
-        shield_eff = 0.50 * equip_eff * (1.5 if mode["shield_priority"] else 1.0)
-        rad_damage = s["radiation"] * 0.001
-        if s["energy"] > 30.0:
-            rad_damage *= shield_eff   # 建议四：辐射防护消耗能源
-        s["health"] = max(0.0, min(100.0, s["health"] - rad_damage))
-
-        if s["food"]   < 20.0:  s["health"] = max(0.0, s["health"] - 0.10)
-        if s["oxygen"] < 30.0:  s["health"] = max(0.0, s["health"] - 0.30)
-        if s["water"]  < 20.0:  s["health"] = max(0.0, s["health"] - 0.15)
-        
-        # 🆕 工程级修正：引入高能粒子指数级物理耗散模型 (Exponential Decay)
-        # 🔴 修复：指数级衰减模型 + 宇宙射线背景微扰
-        if not s["solarStormActive"]:
-            # 如果辐射值明显高于基准值，处于风暴后的清洗衰减期
-            if s["radiation"] > s["initRadiation"] + 0.5:
-                decay_rate = 0.85 if s["energy"] > 20.0 else 0.95
-                excess_rad = s["radiation"] - s["initRadiation"]
-                s["radiation"] = round((excess_rad * decay_rate) + s["initRadiation"], 2)
-            else:
-                # 处于平静期：在基准值附近产生真实的物理宇宙微小白噪声波动 (-0.1 到 +0.25)
-                s["radiation"] = round(s["initRadiation"] + random.uniform(-0.1, 0.25), 2)
-
-        # ─────────────────────────────────────────────────
-        # 建议六：AI 差异化自动调度
-        # ─────────────────────────────────────────────────
-        emergency = False
-
-        if s["energy"] < 40.0:
-            boost = round(1.5 * mode["energy_save"], 3)
-            if boost > 0:
-                s["energy"] = min(100.0, s["energy"] + boost)
-                new_events.append(("AI_DISPATCH",
-                    f"🤖 [{s['aiMode']}] Energy critical — non-core shutdown "
-                    f"(+{boost:.2f}%, save={mode['energy_save']})"))
-            if s["energy"] < 15.0:
-                emergency = True
-
-        if s["oxygen"] < 30.0:
-            s["activityFactor"] = round(activity * 0.70, 3)
-            new_events.append(("AI_DISPATCH",
-                f"🤖 [{s['aiMode']}] O₂ < 30% — activity reduced to "
-                f"{s['activityFactor']:.2f}"))
-
-        if s["radiation"] > 70.0:
-            health_boost = 0.50 if mode["shield_priority"] else 0.10
-            s["health"] = min(100.0, s["health"] + health_boost)
-            new_events.append(("AI_DISPATCH",
-                f"🤖 [{s['aiMode']}] Radiation > 70 — shield boost "
-                f"(+{health_boost:.3f})"))
-            emergency = True
-
-        if s["food"] < 20.0:
-            new_events.append(("AI_DISPATCH",
-                f"🤖 [{s['aiMode']}] Food < 20% — emergency rationing "
-                f"(ration={mode['ration']})"))
-
-        if s["stability"] < 30.0:
-            emergency = True
-
-        s["emergencyMode"] = emergency
-
-        # ─────────────────────────────────────────────────
-        # 系统稳定性算法
-        # ─────────────────────────────────────────────────
-        rad_risk     = (s["radiation"] / 100.0) * 20.0
-        s["stability"] = max(0.0, min(100.0, round(
-            (s["oxygen"] + s["food"] + s["water"] + s["energy"] + s["health"])
-            / 5.0 - rad_risk, 2
-        )))
-
-        # ─────────────────────────────────────────────────
-        # 建议七：优化生存预测（资源耦合修正）
-        # ─────────────────────────────────────────────────
-        EPS = 1e-4
-
-        o2_net_rate    = max(EPS, o2_consumption - o2_regen)
-        food_rate      = max(EPS, food_consumption)
-        water_net_rate = max(EPS, net_water)
-        energy_net_rate= max(EPS, e_consumption - solar_output)
-
-        o2_hours     = s["oxygen"] / o2_net_rate
-        food_hours   = s["food"]   / food_rate
-        water_hours  = s["water"]  / water_net_rate
-        energy_hours = s["energy"] / energy_net_rate
-        
-        # 🆕 工程级修正：引入断电/断水后的“极端降级代谢率”
-        emergency_o2_con = s["crewCount"] * 0.40 * 0.03 # 假设失去能源/水后，全员强制进入0.4极低代谢保命
-                # 耦合修正：独立计算能源和水耗尽后的O2剩余时间，取最小值
-        o2h_final = o2_hours
-        
-        # 修正1：能源耗尽 → 电解停止 → O₂ 消耗按照极端代谢率计算
-        if energy_hours < o2_hours and s["energy"] > 0.0:
-            o2_at_energy_zero = s["oxygen"] - o2_net_rate * energy_hours
-            o2h_final = min(o2h_final, energy_hours + max(
-                0.0, o2_at_energy_zero / max(EPS, emergency_o2_con)
-            ))
-
-        # 修正2：水耗尽 → 电解停止 → O₂ 消耗按照极端代谢率计算
-        if water_hours < o2_hours and s["water"] > 0.0:
-            o2_after_water = s["oxygen"] - o2_net_rate * water_hours
-            o2h_final = min(o2h_final, water_hours + max(
-                0.0, o2_after_water / max(EPS, emergency_o2_con)
-            ))
-            
-        o2_hours = o2h_final
-
-        s["survivalPrediction"] = max(0.0, round(
-            min(o2_hours, food_hours, water_hours, energy_hours) / 24.0, 1
-        ))
-
-        # ─────────────────────────────────────────────────
-        # 时间推进 + 历史快照
-        # ─────────────────────────────────────────────────
-        s["missionTime"] += 1
-        s["missionDay"]   = s["missionTime"] // 24
-
-        for etype, desc in new_events:
-            s["events"].append({
-                "tick": s["missionTime"],
-                "type": etype,
-                "description": desc
-            })
-        if len(s["events"]) > 200:
-            s["events"] = s["events"][-200:]
-
+        # 历史快照（字段与前端大屏一致）
         s["history"].append({
-            "tick":               s["missionTime"],
-            "day":                s["missionDay"],
-            "hour":               hour,
-            "phase":              phase,
-            "oxygen":             round(s["oxygen"],    2),
-            "food":               round(s["food"],      2),
-            "water":              round(s["water"],     2),
-            "energy":             round(s["energy"],    2),
-            "health":             round(s["health"],    2),
-            "stability":          round(s["stability"], 2),
-            "radiation":          round(s["radiation"], 2),
-            "temperature":        round(s["temperature"], 2),
-            "survivalPrediction": s["survivalPrediction"],
-            "activityFactor":     s["activityFactor"],
-            "equipmentEfficiency":s["equipmentEfficiency"],
-            "solarStormActive":   s["solarStormActive"],
-            "solarOutput":        round(solar_output, 4),
-            "o2Regen":            round(o2_regen, 4),
-            "waterRecycling":     round(water_recycling, 4),
+            "tick":                s["missionTime"],
+            "day":                 s["missionDay"],
+            "hour":                s["hour"],
+            "phase":               s["phase"],
+            "oxygen":              round(s["oxygen"],    2),
+            "food":                round(s["food"],      2),
+            "water":               round(s["water"],     2),
+            "energy":              round(s["energy"],    2),
+            "health":              round(s["health"],    2),
+            "stability":           round(s["stability"], 2),
+            "radiation":           round(s["radiation"], 2),
+            "temperature":         round(s["temperature"], 2),
+            "survivalPrediction":  s["survivalPrediction"],
+            "activityFactor":      s["activityFactor"],
+            "equipmentEfficiency": s["equipmentEfficiency"],
+            "solarStormActive":    s["solarStormActive"],
+            "solarOutput":         s["solarOutput"],
+            "o2Regen":             s["o2Regen"],
+            "waterRecycling":      s["waterRecycling"],
         })
         if len(s["history"]) > 720:
             s["history"] = s["history"][-720:]
-
-        # ─────────────────────────────────────────────────
-        # 判断任务失败
-        # ─────────────────────────────────────────────────
-        fails = []
-        if s["oxygen"] <= 0:  fails.append("Oxygen Depleted")
-        if s["health"]  <= 0: fails.append("Crew Incapacitated")
-        if s["food"]    <= 0: fails.append("Food Exhausted")
-        if s["water"]   <= 0: fails.append("Water Exhausted")
-        if fails:
-            s["running"] = False
-            s["events"].append({
-                "tick": s["missionTime"],
-                "type": "MISSION_FAILED",
-                "description": f"💀 MISSION FAILED — {' | '.join(fails)}"
-            })
 def sim_loop():
     while not stop_event.is_set():
         simulation_tick()
@@ -458,7 +185,7 @@ def api_start():
             "aiMode":       data.get('aiMode', 'Normal'),
             "solarStormProbability": float(data.get('solarStormProbability', 5.0)),
             "solarStormActive": False,
-            "equipmentEfficiency": 1.0, "activityFactor": 1.0,
+            "equipmentEfficiency": 1.0, "bioEfficiency": 1.0, "activityFactor": 1.0,
             "emergencyMode": False,
             "events": [], "history": [],
             "initRadiation":    float(data.get('radiation',    10.0)),
