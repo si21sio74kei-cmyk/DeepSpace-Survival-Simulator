@@ -11,7 +11,9 @@ import time
 import random
 import math
 import copy
-from lib.simulation_core import step_simulation
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from simulation_core import step_simulation
 
 app = Flask(__name__)
 CORS(app) # 啟用跨域，對接 survival.html
