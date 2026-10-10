@@ -1,2 +1,16 @@
+[project]
+name = "deepspace-survival-simulator"
+version = "1.0.0"
+description = "Deep Space Survival Simulator backend"
+requires-python = ">=3.9"
+dependencies = [
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "requests>=2.31.0",
+]
+
+[tool.uv]
+package = false
+
 [tool.vercel]
 entrypoint = "api.index:app"
