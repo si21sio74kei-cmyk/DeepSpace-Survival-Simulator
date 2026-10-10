@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Vercel
+.vercel
+
+# OS
+desktop.ini
+.DS_Store
+
+# Local test artifacts
+srv*.log
+srv*.err
+shot_*.png
+_browser_test.py
+_smoke.py

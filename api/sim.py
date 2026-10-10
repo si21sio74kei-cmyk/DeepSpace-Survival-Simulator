@@ -12,7 +12,7 @@ import time
 import random
 import math
 import copy
-from simulation_core import step_simulation
+from lib.simulation_core import step_simulation
 
 app = Flask(__name__)
 CORS(app)
