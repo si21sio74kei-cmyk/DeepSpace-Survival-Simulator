@@ -219,6 +219,104 @@ def api_history():
         return jsonify(sim_state['history'])
 
 
+# ================================================================
+# 多组对比 —— 使用真实核心 step_simulation 演算（唯一公式来源）
+# 前端不再用 JS 复刻公式，彻底消除公式分叉
+# ================================================================
+@app.route('/api/sim/compare', methods=['POST'])
+def api_compare():
+    data = request.get_json() or {}
+
+    def fnum(key, default, lo, hi):
+        try:
+            v = float(data.get(key, default))
+        except (TypeError, ValueError):
+            v = float(default)
+        return max(lo, min(hi, v))
+
+    init = {
+        "crewCount":    int(fnum('crewCount', 4, 1, 100)),
+        "oxygen":       fnum('oxygen', 100.0, 0.0, 100.0),
+        "food":         fnum('food', 100.0, 0.0, 100.0),
+        "water":        fnum('water', 100.0, 0.0, 100.0),
+        "energy":       fnum('energy', 100.0, 0.0, 100.0),
+        "radiation":    fnum('radiation', 10.0, 0.0, 100.0),
+        "temperature":  fnum('temperature', 22.0, -50.0, 60.0),
+        "solarStormProbability": fnum('solarStormProbability', 5.0, 0.0, 100.0),
+    }
+    days = int(fnum('days', 180, 30, 730))
+    stochastic = bool(data.get('stochastic', True))
+    modes = data.get('modes')
+    if not isinstance(modes, list) or not modes:
+        modes = list(AI_MODES.keys())
+    modes = [m for m in modes if m in AI_MODES][:8] or list(AI_MODES.keys())
+
+    total_ticks = days * 24
+    results = []
+    for m in modes:
+        s = {
+            "running": True, "paused": False,
+            "missionTime": 0, "missionDay": 0,
+            "crewCount": init["crewCount"],
+            "oxygen": init["oxygen"], "food": init["food"],
+            "water": init["water"], "energy": init["energy"],
+            "radiation": init["radiation"], "temperature": init["temperature"],
+            "health": 100.0, "stability": 100.0,
+            "survivalPrediction": float(days),
+            "aiMode": m,
+            "solarStormProbability": init["solarStormProbability"],
+            "solarStormActive": False,
+            "equipmentEfficiency": 1.0,
+            "bioEfficiency": 1.0,
+            "activityFactor": 1.0,
+            "emergencyMode": False,
+            "events": [],
+            "initRadiation": init["radiation"],
+            "initTemperature": init["temperature"],
+        }
+        mode_params = AI_MODES[m].copy()
+        history = []
+        failed = False
+        for _ in range(total_ticks):
+            step_simulation(s, mode_params, stochastic=stochastic)
+            if not s.get("running", True):
+                # 核心判定任务失败（氧/健康/食物/水耗尽）
+                failed = True
+                history.append({
+                    "day": s["missionDay"] + 1,
+                    "oxygen": 0.0, "food": round(s["food"], 2),
+                    "water": round(s["water"], 2), "energy": round(s["energy"], 2),
+                    "health": 0.0, "stability": 0.0,
+                    "radiation": round(s["radiation"], 2),
+                    "survivalPrediction": 0.0,
+                })
+                break
+            if s["hour"] == 23:  # 每模拟日结束时记一个每日快照
+                history.append({
+                    "day": s["missionDay"],
+                    "oxygen": round(s["oxygen"], 2),
+                    "food": round(s["food"], 2),
+                    "water": round(s["water"], 2),
+                    "energy": round(s["energy"], 2),
+                    "health": round(s["health"], 2),
+                    "stability": round(s["stability"], 2),
+                    "radiation": round(s["radiation"], 2),
+                    "survivalPrediction": s["survivalPrediction"],
+                    "equipEff": s["equipmentEfficiency"],
+                })
+        results.append({
+            "mode": m,
+            "history": history,
+            "finalState": {k: s[k] for k in (
+                "oxygen", "food", "water", "energy", "health", "stability",
+                "radiation", "temperature", "survivalPrediction",
+                "missionTime", "missionDay", "bioEfficiency")},
+            "survived": not failed,
+        })
+
+    return jsonify({"engine": "python-core", "results": results})
+
+
 @app.route('/api/sim/pause', methods=['POST'])
 def api_pause():
     with sim_lock:

@@ -1,0 +1,205 @@
+════════════════════════════════════════════════════════════════════
+  深空生存仿真 —— 核心演算公式文档
+════════════════════════════════════════════════════════════════════
+唯一事实来源 (Single Source of Truth)：
+    api/lib/simulation_core.py  →  step_simulation(s, mode, stochastic)
+三端共用本模块（在线引擎 / 影子预测引擎 / 多组对比 / 蒙特卡洛），
+每个 tick = 1 模拟小时。本文档与代码同步更新。
+
+──────────────────────────────────────────────
+一、集中管理的物理常数（simulation_core.py 顶部）
+──────────────────────────────────────────────
+  WATER_RECOVERY_RATIO = 0.93    水回收闭环率（NASA ECLSS，ISS WRS ≈ 93%）
+  O2_CLOSURE           = 0.70    电解制氧闭环率（满功率时再生 ≈ 消耗的 70%）
+  BIO_CLOSURE_FRAC     = 0.35    生物再生环（MELiSSA 式）贡献的 O₂ 闭环份额
+  ELECTROLYSIS_WATER_LOSS = 0.15 电解额外水损耗比例
+  SOLAR_PEAK           = 0.22    白昼太阳能峰值输出
+  CRIT（安全裕度临界值）: oxygen 20 / food 20 / water 15 / energy 15 / health 30
+
+──────────────────────────────────────────────
+二、AI 策略参数（mode 字典，8 种模式）
+──────────────────────────────────────────────
+  activity       活动系数（乘员消耗倍率）
+  energy_save    节能系数（降低系统负载）
+  ration         配给系数（食物消耗倍率）
+  regen_boost    再生增益（电解制氧倍率）
+  shield_priority 优先屏蔽（bool，辐射防护加强）
+
+  Dynamic AI 专用 —— 帕累托多目标自适应（每 tick 重算）：
+    w_o2 = 12.0  若 O₂ < 35%，否则 1.0
+    w_en = 10.0  若 能源 < 30%，否则 1.0
+    w_rad = 6.0  若 辐射 > 60，否则 0.5
+    base_act = 0.85 − w_o2·0.04 − 辐射·0.002
+    base_es  = 0.20 + w_en·0.05 + 辐射·0.003
+    activity    = clamp(base_act, 0.35, 1.20)
+    energy_save = clamp(base_es, −0.10, 0.60)
+
+──────────────────────────────────────────────
+三、昼夜节律与活动系数
+──────────────────────────────────────────────
+  hour = missionTime mod 24
+  白昼 (6 ≤ hour ≤ 22)：activity = mode.activity          → phase = "DAY"
+  夜间（其余）        ：activity = mode.activity × 0.40    → phase = "NIGHT"
+
+──────────────────────────────────────────────
+四、舱内温度演化
+──────────────────────────────────────────────
+  基温 base_t = initTemperature（用户设定的初始温度）
+  目标温度 target_t = base_t + (白昼 +0.6 / 夜间 −0.4)
+  temperature ← temperature + (target_t − temperature)×0.15 + 噪声
+  噪声 = U(−0.15, +0.15)（stochastic=True 时；确定性演算为 0）
+
+──────────────────────────────────────────────
+五、设备老化
+──────────────────────────────────────────────
+  days_elapsed = missionTime / 24
+  equipmentEfficiency = max(0.50, 1.0 − (days_elapsed / 365)×0.20)
+
+──────────────────────────────────────────────
+六、随机事件（stochastic=False 时全部关闭）
+──────────────────────────────────────────────
+  1) 太阳风暴：
+     持续中：辐射 +0.80/tick；每 tick 以 6% 概率平息
+     触发：P = (solarStormProbability / 100) / 24 每 tick
+           触发时辐射 += U(15, 28)
+  2) 随机故障（概率 × fail_mult，fail_mult = 2.0 − equipmentEfficiency）：
+     氧气泄漏      P=0.004  氧气 −U(3, 9)
+     冷链失效      P=0.003  食物 −U(2, 7)
+     电力故障      P=0.003  能源 −U(5, 12)
+     医疗紧急      P=0.0015 健康 −U(3, 8)
+
+──────────────────────────────────────────────
+七、资源耦合计算（核心）
+──────────────────────────────────────────────
+  ① 辐射因子：rad_factor = 1.0 + (radiation/100)×0.30
+     耗氧：o2_consumption = crewCount × activity × rad_factor × 0.03
+
+  ② 电解制氧（energy > 20 时启动）：
+     power_frac = (energy − 20) / 80
+     regen_eff  = regen_boost × equipmentEfficiency
+     o2_regen   = o2_consumption × regen_eff × power_frac × O2_CLOSURE
+     电解耗水   water_for_elec = o2_regen × ELECTROLYSIS_WATER_LOSS
+     （energy ≤ 20 时 o2_regen = 0，电解耗水 = 0）
+
+  ③ 生物再生环（MELiSSA 式，独立于电力的光合产氧）：
+     bio_target = max(0, 1 − (radiation/100)×0.40
+                        − |temperature − initTemperature|×0.02) × equipmentEfficiency
+     bioEfficiency ← clamp(bioEfficiency + (bio_target − bioEfficiency)×0.05, 0.20, 1.0)
+     bio_o2 = o2_consumption × BIO_CLOSURE_FRAC × bioEfficiency
+
+  ④ 氧气更新：
+     oxygen ← clamp(oxygen − o2_consumption + o2_regen + bio_o2, 0, 100)
+
+  ⑤ 食物：
+     health_factor = 1.0（健康 ≥ 50）否则 health/50
+     food_consumption = crewCount × activity × ration × 0.02 × health_factor
+     food ← max(0, food − food_consumption)
+
+  ⑥ 水：
+     water_consumption = crewCount × activity × 0.025
+     water_recycling   = crewCount × activity × 0.025 × WATER_RECOVERY_RATIO × equipmentEfficiency
+     net_water = water_consumption − water_recycling + water_for_elec
+     water ← clamp(water − net_water, 0, 100)
+
+  ⑦ 能源：
+     sys_load = 1.0 − energy_save
+     e_consumption = sys_load×0.05 + radiation×0.01
+                     + |temperature − initTemperature|×0.03
+     若 radiation > 60：e_consumption ×= 1.0 + (radiation − 60)/100
+     太阳能（无风暴且 8 ≤ hour ≤ 18）：
+       day_factor = sin(π × (hour − 8) / 10)
+       solar_output = SOLAR_PEAK × day_factor × equipmentEfficiency
+     energy ← clamp(energy − e_consumption + solar_output, 0, 100)
+
+──────────────────────────────────────────────
+八、健康演化
+──────────────────────────────────────────────
+  shield_eff = 0.50 × equipmentEfficiency × (shield_priority ? 1.5 : 1.0)
+  rad_damage = radiation × 0.001（energy > 30 时 ×= shield_eff）
+  health ← clamp(health − rad_damage, 0, 100)
+  匮乏惩罚：food < 20 → −0.10/tick；oxygen < 30 → −0.30/tick；water < 20 → −0.15/tick
+
+──────────────────────────────────────────────
+九、辐射指数衰减（无风暴时）
+──────────────────────────────────────────────
+  若 radiation > initRadiation + 0.5（风暴后清洗期）：
+     decay_rate = 0.85（energy > 20）否则 0.95
+     radiation ← (radiation − initRadiation) × decay_rate + initRadiation
+  否则（背景微扰）：radiation ← initRadiation + U(−0.1, +0.25)
+
+──────────────────────────────────────────────
+十、AI 差异化自动调度（事件 + 联动）
+──────────────────────────────────────────────
+  O₂ < 30：activity ×= 0.70（低活动保氧）
+  能源 < 40：非核心关机 energy += 1.5 × energy_save（>0 时）
+  辐射 > 70：shield_priority → 健康 +0.50，否则 +0.10
+  食物 < 20：触发紧急配给事件（ration 生效）
+
+──────────────────────────────────────────────
+十一、系统稳定性
+──────────────────────────────────────────────
+  stability = clamp( (oxygen + food + water + energy + health) / 5
+                     − (radiation/100)×20,  0, 100)
+
+──────────────────────────────────────────────
+十二、生存预测（动态耦合修正，单位：天）
+──────────────────────────────────────────────
+  净消耗速率（下限 EPS=1e−4）：
+    o2_net_rate   = o2_consumption − o2_regen − bio_o2
+    food_rate     = food_consumption
+    water_net_rate= net_water
+    energy_net_rate = e_consumption − solar_output
+  独立耗尽时间（小时）：
+    o2_hours = oxygen / o2_net_rate
+    food_hours = food / food_rate
+    water_hours = water / water_net_rate
+    energy_hours = energy / energy_net_rate
+  耦合修正（维生失效后电解停止，仅生物再生环继续供氧）：
+    emergency_o2_con = max(EPS, o2_consumption − bio_o2)
+    若 energy_hours < o2_hours：
+       o2_at_energy_zero = oxygen − o2_net_rate × energy_hours
+       o2_hours = min(o2_hours, energy_hours + max(0, o2_at_energy_zero / emergency_o2_con))
+    若 water_hours < o2_hours：
+       o2_after_water = oxygen − o2_net_rate × water_hours
+       o2_hours = min(o2_hours, water_hours + max(0, o2_after_water / emergency_o2_con))
+  生存预测（天）= max(0, min(o2_hours, food_hours, water_hours, energy_hours) / 24)
+
+──────────────────────────────────────────────
+十三、安全裕度 safety_margin（替代原“李雅普诺夫势函数”）
+──────────────────────────────────────────────
+  margin = Σ_{res∈CRIT} [ ((s.res − crit) / (100 − crit))²   （仅当 s.res > crit）]
+           − (radiation/100)² × 0.2
+
+──────────────────────────────────────────────
+十四、紧急模式与失败判定
+──────────────────────────────────────────────
+  emergencyMode = (energy < 15) ∨ (radiation > 70) ∨ (stability < 30)
+  任务失败（任一满足，running=False，记录 MISSION_FAILED 事件）：
+     oxygen ≤ 0   → Oxygen Depleted
+     health ≤ 0   → Crew Incapacitated
+     food ≤ 0     → Food Exhausted
+     water ≤ 0    → Water Exhausted
+
+──────────────────────────────────────────────
+十五、多组对比的真实演算链路（本次更新）
+──────────────────────────────────────────────
+  后端端点：POST /api/sim/compare
+    请求：{crewCount, oxygen, food, water, energy, radiation, temperature,
+           solarStormProbability, days(30–730), stochastic(bool), modes[]}
+    处理：对每个所选 AI 模式，用与实时仿真完全相同的
+          step_simulation() 逐 tick 推演 days×24 小时，
+          每模拟日（hour==23）记录每日快照。
+    响应：{engine:"python-core",
+           results:[{mode, history[每日快照], finalState, survived}]}
+
+  前端 simulation.html「多组对比」页现调用该端点 ——
+  与实时仿真共用同一套公式（单一事实来源），不再使用前端 JS 复刻公式。
+  本地 JS 引擎 runSim() 仅在后端不可达时作降级预案（会弹出红色提示）。
+
+  确定性演算：勾掉「随机事件」→ stochastic=False →
+  关闭风暴/故障/噪声，同参数多次对比结果完全一致，便于横向对比。
+
+════════════════════════════════════════════════════════════════════
+  注：本文档所有公式与 api/lib/simulation_core.py 一一对应；
+  修改公式请改核心代码并同步更新本文件。
+════════════════════════════════════════════════════════════════════

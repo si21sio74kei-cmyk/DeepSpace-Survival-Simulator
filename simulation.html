@@ -1033,7 +1033,7 @@ function runSim(initParams, modeName, totalDays, stochastic){
   return {mode:modeName, history, finalState:{...s}, survived:!failed};
 }
 
-function runComparison(){
+async function runComparison(){
   const params = {
     crewCount:             +document.getElementById('c_crew').value,
     oxygen:                +document.getElementById('c_o2').value,
@@ -1052,13 +1052,28 @@ function runComparison(){
   prog.textContent = T('cc_calc');
   prog.classList.remove('hidden');
 
-  setTimeout(()=>{
-    if (!cmpInitDone){ initCmpCharts(); cmpInitDone = true; }
-    const results = modes.map(m => runSim(params, m, days, stochastic));
-    updateCmpCharts(results);
-    updateCmpTable(results);
-    prog.classList.add('hidden');
-  }, 60);
+  if (!cmpInitDone){ initCmpCharts(); cmpInitDone = true; }
+
+  let results = null;
+  try {
+    // ★ 真實演算：由後端 Python 核心 (simulation_core) 統一跑，消除公式分叉
+    const r = await fetch(`${API}/compare`,{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({...params, days, stochastic, modes})});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d.results || !d.results.length) throw new Error('empty results');
+    results = d.results;
+    showToast('真實核心演算完成 (python-core)');
+  } catch(e){
+    // 降級：後端不可用時才用本地 JS 近似引擎
+    results = modes.map(m => runSim(params, m, days, stochastic));
+    showToast('後端不可用，已降級為本地近似引擎', true);
+  }
+
+  updateCmpCharts(results);
+  updateCmpTable(results);
+  prog.classList.add('hidden');
 }
 
 // ============================================================

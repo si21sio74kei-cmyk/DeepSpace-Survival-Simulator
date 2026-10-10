@@ -29,7 +29,7 @@ SOLAR_PEAK = 0.22               # 白昼峰值太阳能输出（原 0.08，重�
 CRIT = {"oxygen": 20.0, "food": 20.0, "water": 15.0, "energy": 15.0, "health": 30.0}
 
 
-def step_simulation(s, mode):
+def step_simulation(s, mode, stochastic=True):
     """推演一个模拟小时（tick）。原地修改状态字典 s，返回 s。
 
     s 必须包含：crewCount, oxygen, food, water, energy, radiation,
@@ -39,6 +39,8 @@ def step_simulation(s, mode):
     initTemperature, missionTime, missionDay。
     mode 为 AI 模式参数字典（activity/energy_save/ration/regen_boost/
     shield_priority）。
+    stochastic=False 时关闭全部随机事件（风暴、故障、噪声扰动），
+    用于多组对比/回归测试的确定性演算；默认 True 保持真实随机。
     """
     hour = int(s["missionTime"]) % 24
     days_elapsed = s["missionTime"] / 24.0
@@ -66,9 +68,9 @@ def step_simulation(s, mode):
     # ── 舱内温度动态波动（白噪声 + 昼夜温差）──
     base_t = s.get("initTemperature", 22.0)
     target_t = base_t + (0.6 if phase == "DAY" else -0.4)
+    noise_t = random.uniform(-0.15, 0.15) if stochastic else 0.0
     s["temperature"] = round(
-        s["temperature"] + (target_t - s["temperature"]) * 0.15
-        + random.uniform(-0.15, 0.15), 2)
+        s["temperature"] + (target_t - s["temperature"]) * 0.15 + noise_t, 2)
 
     # ── 设备老化衰减 ──
     equip_eff = max(0.50, 1.0 - (days_elapsed / 365.0) * 0.20)
@@ -77,32 +79,32 @@ def step_simulation(s, mode):
     # ── 随机事件：太阳风暴 ──
     if s["solarStormActive"]:
         s["radiation"] = min(100.0, s["radiation"] + 0.80)
-        if random.random() < 0.06:
+        if stochastic and random.random() < 0.06:
             s["solarStormActive"] = False
             new_events.append(("SOLAR_STORM_END",
                                "☀ Solar storm subsiding — radiation normalizing"))
-    elif random.random() < (s["solarStormProbability"] / 100.0) / 24.0:
+    elif stochastic and random.random() < (s["solarStormProbability"] / 100.0) / 24.0:
         s["solarStormActive"] = True
         spike = random.uniform(15.0, 28.0)
         s["radiation"] = min(100.0, s["radiation"] + spike)
         new_events.append(("SOLAR_STORM",
                            f"⚡ SOLAR STORM! Radiation +{spike:.1f} mSv"))
 
-    # ── 随机故障（概率随设备老化上升）──
+    # ── 随机故障（概率随设备老化上升；确定性模式下关闭）──
     fail_mult = 2.0 - equip_eff
-    if random.random() < 0.004 * fail_mult:
+    if stochastic and random.random() < 0.004 * fail_mult:
         leak = round(random.uniform(3.0, 9.0), 1)
         s["oxygen"] = max(0.0, s["oxygen"] - leak)
         new_events.append(("OXYGEN_LEAK", f"💨 Oxygen Leak Detected! O₂ −{leak}%"))
-    if random.random() < 0.003 * fail_mult:
+    if stochastic and random.random() < 0.003 * fail_mult:
         loss = round(random.uniform(2.0, 7.0), 1)
         s["food"] = max(0.0, s["food"] - loss)
         new_events.append(("COLDCHAIN_FAIL", f"🧊 Cold-Chain Failure! Food −{loss}%"))
-    if random.random() < 0.003 * fail_mult:
+    if stochastic and random.random() < 0.003 * fail_mult:
         loss = round(random.uniform(5.0, 12.0), 1)
         s["energy"] = max(0.0, s["energy"] - loss)
         new_events.append(("ENERGY_FAIL", f"🔌 Power System Failure! Energy −{loss}%"))
-    if random.random() < 0.0015 * fail_mult:
+    if stochastic and random.random() < 0.0015 * fail_mult:
         loss = round(random.uniform(3.0, 8.0), 1)
         s["health"] = max(0.0, s["health"] - loss)
         new_events.append(("MEDICAL_EMERGENCY", f"🚑 Medical Emergency! Health −{loss}%"))
@@ -124,7 +126,7 @@ def step_simulation(s, mode):
     # 生物再生环（MELiSSA 式：藻类/植物光合产氧，独立于电力）
     # 效率随辐射（高能粒子损伤藻类）与温度偏离下降，并随设备老化缓慢衰减；条件好时缓慢恢复
     bio_target = max(0.0, 1.0 - (s["radiation"] / 100.0) * 0.40
-                     - abs(s["temperature"] - 22.0) * 0.02) * equip_eff
+                     - abs(s["temperature"] - s.get("initTemperature", 22.0)) * 0.02) * equip_eff
     s["bioEfficiency"] = round(max(0.20, min(1.0,
         s["bioEfficiency"] + (bio_target - s["bioEfficiency"]) * 0.05)), 3)
     bio_o2 = o2_consumption * BIO_CLOSURE_FRAC * s["bioEfficiency"]
@@ -143,8 +145,9 @@ def step_simulation(s, mode):
     s["water"] = max(0.0, min(100.0, s["water"] - net_water))
 
     sys_load = 1.0 - mode["energy_save"]
-    # 温控能耗：|ΔT|*0.03（已对齐无头版，温度对能耗有真实影响）
-    e_consumption = sys_load * 0.05 + s["radiation"] * 0.01 + abs(s["temperature"] - 22.0) * 0.03
+    # 温控能耗：|ΔT|*0.03（相对用户设定基温 initTemperature，已对齐无头版）
+    e_consumption = (sys_load * 0.05 + s["radiation"] * 0.01
+                     + abs(s["temperature"] - s.get("initTemperature", 22.0)) * 0.03)
     if s["radiation"] > 60.0:
         e_consumption *= 1.0 + (s["radiation"] - 60.0) / 100.0
 
@@ -175,7 +178,8 @@ def step_simulation(s, mode):
             excess_rad = s["radiation"] - s["initRadiation"]
             s["radiation"] = round((excess_rad * decay_rate) + s["initRadiation"], 2)
         else:
-            s["radiation"] = round(s["initRadiation"] + random.uniform(-0.1, 0.25), 2)
+            jitter = random.uniform(-0.1, 0.25) if stochastic else 0.0
+            s["radiation"] = round(s["initRadiation"] + jitter, 2)
 
     # ── AI 差异化自动调度 ──
     if s["oxygen"] < 30.0:
