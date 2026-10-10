@@ -698,7 +698,7 @@ const MAX_PTS = 72;
 let LC = {};
 
 function initLiveCharts(){
-  const o1 = dc(BASE_OPT); o1.scales.y.min=0; o1.scales.y.max=100;
+  const o1 = dc(BASE_OPT); o1.scales.y.max=100; o1.scales.y.grace='8%';
   LC.res = new Chart(document.getElementById('ch-res'),{
     type:'line', options:o1,
     data:{labels:[],datasets:[
