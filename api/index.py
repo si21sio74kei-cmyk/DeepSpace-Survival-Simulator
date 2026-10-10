@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, send_from_directory, abort
+from flask_cors import CORS
 
 import dash
 import sim
