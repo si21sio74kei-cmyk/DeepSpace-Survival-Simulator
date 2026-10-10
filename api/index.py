@@ -14,8 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flask import Flask
-from flask_cors import CORS
+from flask import Flask, send_from_directory, abort
 
 import dash
 import sim
@@ -23,6 +22,21 @@ import space
 
 app = Flask(__name__)
 CORS(app)
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PAGES = ("index.html", "simulation.html", "space.html", "dashboard.html")
+
+
+@app.route("/")
+def serve_index():
+    return send_from_directory(ROOT, "index.html")
+
+
+@app.route("/<page>")
+def serve_page(page):
+    if page in PAGES:
+        return send_from_directory(ROOT, page)
+    abort(404)
 
 
 def _merge_routes(prefix, module):
